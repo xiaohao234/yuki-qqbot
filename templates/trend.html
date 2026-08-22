@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Noto Sans SC", "Noto Sans CJK SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: linear-gradient(135deg, #FFB7C5 0%, #C8A2C8 100%);
+    padding: 28px;
+    min-height: 100vh;
+  }
+  .card {
+    width: 680px;
+    margin: 0 auto;
+    background: rgba(255,255,255,0.92);
+    border-radius: 16px;
+    padding: 30px 26px 22px;
+    box-shadow: 0 12px 32px rgba(106,76,147,0.22);
+    border: 1px solid rgba(255,255,255,0.6);
+  }
+  .header { display: flex; align-items: center; margin-bottom: 18px; }
+  .avatar {
+    width: 58px; height: 58px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid #fff;
+    background: #eee;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.18);
+    flex-shrink: 0;
+  }
+  .avatar-ph {
+    width: 58px; height: 58px;
+    border-radius: 50%;
+    background: #eee;
+    flex-shrink: 0;
+  }
+  .head-info { margin-left: 14px; flex: 1; }
+  .nick { font-size: 20px; font-weight: 700; color: #3a3a3a; }
+  .uid { font-size: 12px; color: #999; margin-top: 3px; }
+  .badge {
+    font-size: 13px;
+    color: #fff;
+    background: linear-gradient(135deg, #FFB7C5, #C8A2C8);
+    padding: 6px 16px;
+    border-radius: 10px;
+    letter-spacing: 1px;
+    flex-shrink: 0;
+  }
+
+  .summary { display: flex; gap: 10px; margin-bottom: 16px; }
+  .s-item {
+    flex: 1;
+    background: rgba(255,255,255,0.6);
+    border-radius: 12px;
+    padding: 10px 6px;
+    text-align: center;
+    border: 1px solid rgba(200,162,200,0.25);
+  }
+  .s-label { font-size: 11px; color: #8e7cc3; margin-bottom: 4px; }
+  .s-value { font-size: 18px; font-weight: 700; color: #6A4C93; }
+  .s-value.acc { color: #E74C3C; }
+  .s-sub { font-size: 10px; color: #aaa; margin-top: 2px; }
+
+  .chart-box {
+    background: rgba(255,255,255,0.6);
+    border-radius: 14px;
+    padding: 12px 10px 8px;
+  }
+  .chart-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #6A4C93;
+    padding: 2px 8px 8px;
+  }
+  svg text { font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif; }
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 22px;
+    font-size: 12px;
+    color: #777;
+    padding: 8px 0 2px;
+  }
+  .legend .dot {
+    display: inline-block; width: 14px; height: 4px;
+    border-radius: 2px; margin-right: 6px; vertical-align: middle;
+  }
+  .legend .dot.main { background: linear-gradient(90deg, #FF8FA3, #C8A2C8); }
+  .legend .dot.sub { border-top: 2px dashed #8e7cc3; height: 0; background: none; }
+
+  .footer { text-align: center; font-size: 12px; color: #b39ddb; margin-top: 12px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      {% if avatar_b64 %}
+      <img class="avatar" src="{{ avatar_b64 }}">
+      {% else %}
+      <div class="avatar-ph"></div>
+      {% endif %}
+      <div class="head-info">
+        <div class="nick">{{ nickname }}</div>
+        <div class="uid">QQ {{ target_uid }}</div>
+      </div>
+      <div class="badge">📈 近 7 天发言趋势</div>
+    </div>
+
+    <div class="summary">
+      <div class="s-item">
+        <div class="s-label">7 天总发言</div>
+        <div class="s-value">{{ total_count }}</div>
+        <div class="s-sub">条</div>
+      </div>
+      <div class="s-item">
+        <div class="s-label">日均</div>
+        <div class="s-value">{{ avg_count }}</div>
+        <div class="s-sub">条 / 天</div>
+      </div>
+      <div class="s-item">
+        <div class="s-label">单日峰值</div>
+        <div class="s-value acc">{{ peak_count }}</div>
+        <div class="s-sub">{{ peak_label }}</div>
+      </div>
+      <div class="s-item">
+        <div class="s-label">平均占比</div>
+        <div class="s-value">{{ avg_pct }}%</div>
+        <div class="s-sub">占群总发言</div>
+      </div>
+      <div class="s-item">
+        <div class="s-label">今日</div>
+        <div class="s-value">{{ today_count }}</div>
+        <div class="s-sub">占 {{ today_pct }}%</div>
+      </div>
+    </div>
+
+    <div class="chart-box">
+      <div class="chart-title">📊 每日发言数 &amp; 占群比例走势</div>
+      <svg width="{{ geo.w }}" height="{{ geo.h }}" viewBox="0 0 {{ geo.w }} {{ geo.h }}">
+        <defs>
+          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#FFB7C5" stop-opacity="0.45"/>
+            <stop offset="100%" stop-color="#FFB7C5" stop-opacity="0.03"/>
+          </linearGradient>
+          <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#FF8FA3"/>
+            <stop offset="100%" stop-color="#C8A2C8"/>
+          </linearGradient>
+        </defs>
+
+        <!-- 网格 + 左轴刻度（发言数） -->
+        {% for g in geo.grid %}
+        <line x1="{{ geo.pl }}" y1="{{ g.y }}" x2="{{ geo.pr }}" y2="{{ g.y }}"
+              stroke="#e5dcef" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="{{ geo.pl - 8 }}" y="{{ g.y + 4 }}" font-size="10" fill="#b0a6c9" text-anchor="end">{{ g.label }}</text>
+        {% endfor %}
+
+        <!-- 主线面积 -->
+        <path d="{{ geo.area_path }}" fill="url(#areaGrad)"/>
+        <!-- 占群比例副线（虚线） -->
+        <polyline points="{{ geo.pct_points }}" fill="none" stroke="#8e7cc3"
+                  stroke-width="2" stroke-dasharray="6,4" opacity="0.75"/>
+        <!-- 主折线 -->
+        <polyline points="{{ geo.points }}" fill="none" stroke="url(#lineGrad)"
+                  stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+
+        <!-- 数据点 + 数值 + 日期 -->
+        {% for p in geo.pts %}
+        <circle cx="{{ p.x }}" cy="{{ p.y_pct }}" r="2.5" fill="#8e7cc3" opacity="0.75"/>
+        <circle cx="{{ p.x }}" cy="{{ p.y }}" r="4.5" fill="#fff"
+                stroke="#FF8FA3" stroke-width="2.5"/>
+        <text x="{{ p.x }}" y="{{ p.value_y }}" font-size="10.5" font-weight="600"
+              fill="#E74C3C" text-anchor="middle">{{ p.count }}</text>
+        <text x="{{ p.x }}" y="{{ p.label_y }}" font-size="10.5" fill="#6A4C93"
+              text-anchor="middle" font-weight="600">{{ p.label }}</text>
+        <text x="{{ p.x }}" y="{{ p.label_y + 14 }}" font-size="9" fill="#b0a6c9"
+              text-anchor="middle">周{{ p.weekday }}</text>
+        <!-- 峰值标记 -->
+        {% if p.count == peak_count and peak_count > 0 %}
+        <text x="{{ p.x }}" y="{{ p.value_y - 14 }}" font-size="11" text-anchor="middle">👑</text>
+        {% endif %}
+        {% endfor %}
+      </svg>
+      <div class="legend">
+        <span><span class="dot main"></span>每日发言数（左轴，峰值 {{ geo.max_count }}）</span>
+        <span><span class="dot sub"></span>占群比例 %（右轴参照）</span>
+      </div>
+    </div>
+
+    <div class="footer">🌸 Yuki · 发言趋势 · 数据保留 7 天</div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Noto Sans SC", "Noto Sans CJK SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: linear-gradient(135deg, #FFB7C5 0%, #C8A2C8 100%);
+    padding: 28px;
+    min-height: 100vh;
+  }
+  .card {
+    width: 680px;
+    margin: 0 auto;
+    background: rgba(255,255,255,0.9);
+    border-radius: 16px;
+    padding: 30px 26px;
+    box-shadow: 0 12px 32px rgba(106,76,147,0.22);
+    border: 1px solid rgba(255,255,255,0.6);
+  }
+  .header { text-align: center; margin-bottom: 20px; }
+  .title {
+    font-size: 16px;
+    color: #8e7cc3;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .phrase-box {
+    display: inline-block;
+    padding: 8px 28px;
+    background: linear-gradient(135deg, #FFB7C5, #C8A2C8);
+    border-radius: 12px;
+    margin-bottom: 10px;
+  }
+  .phrase-text {
+    font-size: 32px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 2px;
+  }
+  .total-info {
+    font-size: 15px;
+    color: #6A4C93;
+    margin-top: 8px;
+  }
+  .total-info b { font-size: 22px; color: #E74C3C; font-weight: 700; }
+
+  .pie-section {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 18px;
+    background: rgba(255,255,255,0.6);
+    border-radius: 14px;
+    margin-bottom: 18px;
+  }
+  .pie-wrapper {
+    position: relative;
+    width: 130px; height: 130px;
+    flex-shrink: 0;
+  }
+  .pie {
+    width: 100%; height: 100%;
+    border-radius: 50%;
+  }
+  .pie-hole {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+  .pie-hole .pct { font-size: 20px; font-weight: 700; color: #E74C3C; }
+  .pie-hole .pct-label { font-size: 9px; color: #aaa; margin-top: 2px; }
+  .pie-legend { flex: 1; }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    color: #555;
+    padding: 4px 0;
+  }
+  .legend-item .dot {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border-radius: 3px;
+    margin-right: 8px;
+  }
+  .dot.phrase { background: #FFB7C5; }
+  .dot.others { background: #E8E0EC; }
+  .legend-total {
+    font-size: 13px;
+    color: #8e7cc3;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed #e0d4ea;
+  }
+
+  .section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #6A4C93;
+    margin-bottom: 10px;
+    padding-left: 4px;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    margin: 5px 0 2px 0;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.55);
+  }
+  .row.gold   { background: linear-gradient(90deg, #FFF3B0, #FFE17A); }
+  .row.silver { background: linear-gradient(90deg, #F2F2F2, #DCDCDC); }
+  .row.bronze { background: linear-gradient(90deg, #FFE0CC, #F5B78A); }
+  .rank {
+    width: 36px;
+    font-size: 20px;
+    font-weight: 700;
+    color: #6A4C93;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .avatar {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    margin: 0 12px;
+    object-fit: cover;
+    border: 2px solid #fff;
+    background: #eee;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  }
+  .avatar-ph { width: 42px; height: 42px; border-radius: 50%; margin: 0 12px; background: #eee; flex-shrink: 0; }
+  .name {
+    flex: 1;
+    font-size: 15px;
+    color: #3a3a3a;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+  .count {
+    font-size: 15px;
+    font-weight: 700;
+    color: #E74C3C;
+    margin: 0 10px;
+    white-space: nowrap;
+  }
+  .percent {
+    font-size: 12px;
+    color: #888;
+    width: 56px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .bar-wrap {
+    height: 6px;
+    background: rgba(106,76,147,0.12);
+    border-radius: 3px;
+    margin: 0 16px 4px 16px;
+    overflow: hidden;
+  }
+  .bar {
+    height: 100%;
+    background: linear-gradient(90deg, #FFB7C5, #C8A2C8);
+    border-radius: 3px;
+    min-width: 3px;
+  }
+  .footer { text-align: center; font-size: 12px; color: #b39ddb; margin-top: 14px; }
+  .disclaimer { text-align: center; font-size: 11px; color: #b0b0b0; margin-top: 6px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="title">🔍 {{ date_label }}特定发言统计</div>
+      <div class="phrase-box">
+        <span class="phrase-text">「{{ phrase }}」</span>
+      </div>
+      <div class="total-info">📊 {{ date_label }}出现 <b>{{ total_phrase }}</b> 次</div>
+    </div>
+
+    <div class="pie-section">
+      <div class="pie-wrapper">
+        <div class="pie" style="background: conic-gradient(#FFB7C5 0% {{ group_pct }}%, #E8E0EC {{ group_pct }}% 100%);"></div>
+        <div class="pie-hole">
+          <div class="pct">{{ group_pct }}%</div>
+          <div class="pct-label">占群比</div>
+        </div>
+      </div>
+      <div class="pie-legend">
+        <div class="legend-item"><span class="dot phrase"></span>「{{ phrase }}」· {{ total_phrase }} 条</div>
+        <div class="legend-item"><span class="dot others"></span>其他消息 · {{ group_total - total_phrase }} 条</div>
+        <div class="legend-total">📊 {{ date_label }}群总消息：{{ group_total }} 条</div>
+      </div>
+    </div>
+
+    <div class="section-title">👤 谁在说</div>
+    {% for u in users %}
+    <div class="row {% if u.rank == 1 %}gold{% elif u.rank == 2 %}silver{% elif u.rank == 3 %}bronze{% endif %}">
+      <div class="rank">{{ u.rank }}</div>
+      {% if u.avatar_b64 %}
+      <img class="avatar" src="{{ u.avatar_b64 }}">
+      {% else %}
+      <div class="avatar-ph"></div>
+      {% endif %}
+      <div class="name">{{ u.nickname }}</div>
+      <div class="count">{{ u.count }} 次</div>
+      <div class="percent">{{ u.percent }}%</div>
+    </div>
+    <div class="bar-wrap"><div class="bar" style="width: {{ u.percent }}%;"></div></div>
+    {% endfor %}
+
+    <div class="footer">🌸 Yuki · 特定发言统计</div>
+    <div class="disclaimer">⚠️ 数据仅供参考</div>
+  </div>
+</body>
+</html>

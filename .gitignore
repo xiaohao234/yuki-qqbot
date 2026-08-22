@@ -1,0 +1,20 @@
+# Python 运行产物
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 运行时数据（含真实 QQ 号/昵称，禁止上传）
+data/
+*.json.tmp
+
+# 本地备份与临时文件
+backup/
+_dirlist.txt
+_test*
+*.log
+
+# IDE
+.idea/
+.vscode/

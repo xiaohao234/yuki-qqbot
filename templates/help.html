@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Noto Sans SC", "Noto Sans CJK SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: linear-gradient(135deg, #FFB7C5 0%, #C8A2C8 100%);
+    padding: 28px;
+    min-height: 100vh;
+  }
+  .card {
+    width: 680px;
+    margin: 0 auto;
+    background: rgba(255,255,255,0.92);
+    border-radius: 16px;
+    padding: 32px 28px 22px;
+    box-shadow: 0 12px 32px rgba(106,76,147,0.22);
+    border: 1px solid rgba(255,255,255,0.6);
+  }
+  .header { text-align: center; margin-bottom: 22px; }
+  .brand {
+    display: inline-block;
+    padding: 10px 36px;
+    background: linear-gradient(135deg, #FFB7C5, #C8A2C8);
+    border-radius: 14px;
+    margin-bottom: 10px;
+    box-shadow: 0 6px 16px rgba(200,162,200,0.35);
+  }
+  .brand-text {
+    font-size: 30px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 3px;
+  }
+  .subtitle {
+    font-size: 13px;
+    color: #8e7cc3;
+    letter-spacing: 1px;
+  }
+
+  .group { margin-bottom: 16px; }
+  .group-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #6A4C93;
+    padding: 6px 14px;
+    background: linear-gradient(90deg, rgba(255,183,197,0.35), rgba(200,162,200,0.12));
+    border-left: 4px solid #C8A2C8;
+    border-radius: 8px;
+    margin-bottom: 8px;
+  }
+  .cmd {
+    display: flex;
+    align-items: flex-start;
+    padding: 8px 12px;
+    margin: 4px 0;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.55);
+  }
+  .cmd-code {
+    flex-shrink: 0;
+    font-family: "Consolas", "Monaco", "Noto Sans SC", monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: #E74C3C;
+    background: rgba(231,76,60,0.08);
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(231,76,60,0.18);
+    margin-right: 12px;
+    word-break: keep-all;
+  }
+  .cmd-desc {
+    flex: 1;
+    font-size: 13px;
+    color: #555;
+    line-height: 1.6;
+    padding-top: 3px;
+  }
+  .cmd-desc b { color: #6A4C93; font-weight: 600; }
+
+  .group.admin .cmd-code {
+    color: #fff;
+    background: linear-gradient(135deg, #FFB7C5, #C8A2C8);
+    border: 1px solid rgba(200,162,200,0.4);
+  }
+  .group.admin .group-title {
+    background: linear-gradient(90deg, rgba(231,76,60,0.18), rgba(200,162,200,0.12));
+    border-left-color: #E74C3C;
+    color: #E74C3C;
+  }
+  .group.passive .cmd-code {
+    color: #6A4C93;
+    background: rgba(106,76,147,0.10);
+    border-color: rgba(106,76,147,0.20);
+  }
+
+  .footer {
+    text-align: center;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px dashed #e0d4ea;
+  }
+  .footer-note {
+    font-size: 11px;
+    color: #8e7cc3;
+    line-height: 1.8;
+  }
+  .disclaimer {
+    font-size: 10px;
+    color: #b0b0b0;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="brand"><span class="brand-text">🌸 Yuki 指令手册</span></div>
+      <div class="subtitle">— 你的二次元群聊小伙伴 —</div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">🌸 基础互动</div>
+      <div class="cmd">
+        <span class="cmd-code">/签到</span>
+        <span class="cmd-desc">每日签到，获得今日运势图片（大吉 / 中吉 / 小吉 / 凶），重复签到会重发运势~</span>
+      </div>
+      <div class="cmd">
+        <span class="cmd-code">/运势</span>
+        <span class="cmd-desc">查看今日运势（宜忌 + 幸运数字 + 连续签到天数）</span>
+      </div>
+      <div class="cmd">
+        <span class="cmd-code">/yukihelp 或 //help</span>
+        <span class="cmd-desc">显示本帮助菜单（就是你现在看到的这张图~）</span>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">📊 发言排行</div>
+      <div class="cmd">
+        <span class="cmd-code">/发言排行 / /发言榜 / /今日发言榜</span>
+        <span class="cmd-desc">今日发言排行榜 Top10，含群总消息数和成员占比条</span>
+      </div>
+      <div class="cmd">
+        <span class="cmd-code">/昨日发言 或 /昨日发言榜</span>
+        <span class="cmd-desc">昨日发言排行榜（已定格，不再更新）</span>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">👤 个人发言查询</div>
+      <div class="cmd">
+        <span class="cmd-code">/查发言 [&lt;目标&gt;]</span>
+        <span class="cmd-desc">查询<b>自己</b>或某人的今日 + 昨日发言数据，含趋势对比（📈↑ / 📉↓ / ✨新增）和占群饼图<br>不带参数查自己；&lt;目标&gt; 支持：QQ号 / @用户 / 群昵称</span>
+      </div>
+      <div class="cmd">
+        <span class="cmd-code">/发言 [&lt;目标&gt;]</span>
+        <span class="cmd-desc">同 /查发言 的别名，用法完全一致（不带参数查自己）</span>
+      </div>
+      <div class="cmd">
+        <span class="cmd-code">/发言趋势 或 /趋势 [&lt;目标&gt;]</span>
+        <span class="cmd-desc">近 7 天发言趋势折线图（每日发言数 + 占群比例 + 峰值/日均/占比汇总）<br>不带参数查自己；&lt;目标&gt; 支持：QQ号 / @用户 / 群昵称</span>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">🎯 特定发言统计</div>
+      <div class="cmd">
+        <span class="cmd-code">/&lt;特定发言&gt;</span>
+        <span class="cmd-desc">生成该短语今日统计图（出现次数 + 用户排行 + 占群饼图）<br>需管理员先用 /统计发言 开启追踪</span>
+      </div>
+      <div class="cmd">
+        <span class="cmd-code">/昨日数据 &lt;特定发言&gt;</span>
+        <span class="cmd-desc">生成该短语昨日统计图</span>
+      </div>
+    </div>
+
+    <div class="group admin">
+      <div class="group-title">🔧 管理员指令（仅管理员可用）</div>
+      <div class="cmd">
+        <span class="cmd-code">/统计发言 &lt;短语&gt;</span>
+        <span class="cmd-desc">开启对「短语」的统计，<b>对所有群立即生效</b></span>
+      </div>
+      <div class="cmd">
+        <span class="cmd-code">/删除统计 &lt;短语&gt;</span>
+        <span class="cmd-desc">停止统计该短语并清除所有数据</span>
+      </div>
+    </div>
+
+    <div class="group passive">
+      <div class="group-title">✨ 被动功能（自动触发，无需输入）</div>
+      <div class="cmd">
+        <span class="cmd-code">三人复读</span>
+        <span class="cmd-desc">同群连续 3 个不同成员说同一句时，Yuki 跟着复读一次（同句只发一次）</span>
+      </div>
+      <div class="cmd">
+        <span class="cmd-code">发言统计</span>
+        <span class="cmd-desc">所有群消息自动按日期统计，每天 0 点刷新，数据保留 7 天</span>
+      </div>
+      <div class="cmd">
+        <span class="cmd-code">@Yuki</span>
+        <span class="cmd-desc">AI 聊天已交给 astrbot 处理，@我即可触发对话~</span>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="footer-note">
+        📅 发言统计 &amp; 特定发言统计每天 0 点自动刷新，数据保留 7 天（今天 + 前 6 天）<br>
+        🌸 请按上述格式发送指令（区分大小写）
+      </div>
+      <div class="disclaimer">⚠️ 运势结果仅供参考，请勿迷信哦~</div>
+    </div>
+  </div>
+</body>
+</html>

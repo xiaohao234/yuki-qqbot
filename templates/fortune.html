@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Noto Sans SC", "Noto Sans CJK SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: linear-gradient(135deg, #FFB7C5 0%, #C8A2C8 100%);
+    padding: 28px;
+    min-height: 100vh;
+  }
+  .card {
+    width: 640px;
+    margin: 0 auto;
+    background: rgba(255,255,255,0.9);
+    border-radius: 16px;
+    padding: 32px 30px;
+    box-shadow: 0 12px 32px rgba(106,76,147,0.22);
+    border: 1px solid rgba(255,255,255,0.6);
+  }
+  .top { display: flex; align-items: center; margin-bottom: 20px; }
+  .avatar {
+    width: 84px; height: 84px;
+    border-radius: 50%;
+    border: 3px solid #fff;
+    object-fit: cover;
+    margin-right: 18px;
+    background: #eee;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+  .avatar-ph { width: 84px; height: 84px; border-radius: 50%; margin-right: 18px; background: #eee; }
+  .name { font-size: 22px; font-weight: 700; color: #6A4C93; }
+  .meta { font-size: 14px; color: #8e7cc3; margin-top: 5px; }
+  .streak { color: #E74C3C; font-weight: 600; }
+  .fortune-box {
+    text-align: center;
+    padding: 22px;
+    background: linear-gradient(135deg, #FFF5F8, #F3E7F3);
+    border-radius: 12px;
+    margin: 16px 0;
+    border: 1px dashed #d9c2e8;
+  }
+  .fortune-label { font-size: 14px; color: #8e7cc3; }
+  .fortune-value {
+    font-size: 52px;
+    font-weight: 700;
+    color: {{ fortune_color }};
+    margin: 8px 0 4px;
+    letter-spacing: 4px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  .grid { display: flex; gap: 14px; margin: 18px 0; }
+  .col {
+    flex: 1;
+    background: rgba(255,255,255,0.7);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+  }
+  .col-title { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
+  .col.yi .col-title { color: #27AE60; }
+  .col.ji .col-title { color: #E74C3C; }
+  .col ul { list-style: none; padding-left: 0; }
+  .col li { font-size: 15px; color: #444; padding: 3px 0; }
+  .lucky {
+    text-align: center;
+    margin-top: 18px;
+    font-size: 16px;
+    color: #6A4C93;
+    padding: 12px;
+    background: rgba(255,255,255,0.6);
+    border-radius: 10px;
+  }
+  .lucky span { font-size: 30px; font-weight: 700; color: #E74C3C; margin-left: 6px; }
+  .footer { text-align: center; font-size: 12px; color: #b39ddb; margin-top: 16px; }
+  .disclaimer { text-align: center; font-size: 11px; color: #b0b0b0; margin-top: 6px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="top">
+      {% if avatar_b64 %}
+      <img class="avatar" src="{{ avatar_b64 }}">
+      {% else %}
+      <div class="avatar-ph"></div>
+      {% endif %}
+      <div>
+        <div class="name">{{ nickname }}</div>
+        <div class="meta">📅 {{ date_str }} · <span class="streak">连续签到 {{ streak }} 天</span></div>
+      </div>
+    </div>
+
+    <div class="fortune-box">
+      <div class="fortune-label">今日运势</div>
+      <div class="fortune-value">{{ fortune }}</div>
+    </div>
+
+    <div class="grid">
+      <div class="col yi">
+        <div class="col-title">✨ 宜</div>
+        <ul>{% for item in yi %}<li>{{ item }}</li>{% endfor %}</ul>
+      </div>
+      <div class="col ji">
+        <div class="col-title">🚫 忌</div>
+        <ul>{% for item in ji %}<li>{{ item }}</li>{% endfor %}</ul>
+      </div>
+    </div>
+
+    <div class="lucky">🍀 幸运数字 <span>{{ lucky_number }}</span></div>
+    <div class="footer">🌸 Yuki · 签到运势</div>
+    <div class="disclaimer">⚠️ 运势结果仅供参考，请勿迷信哦</div>
+  </div>
+</body>
+</html>

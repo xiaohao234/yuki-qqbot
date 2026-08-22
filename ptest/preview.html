@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Yuki 渲染样式预览</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Noto Sans SC", "Noto Sans CJK SC", "WenQuanYi Micro Hei",
+                 "WenQuanYi Zen Hei", "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: #efe6f5;
+    padding: 32px 16px;
+  }
+  .page-title { text-align:center; color:#6A4C93; font-size:24px; font-weight:700; margin-bottom:24px; }
+  .section-label { text-align:center; color:#8e7cc3; font-size:14px; margin:28px 0 14px; letter-spacing:2px; }
+
+  /* ===== 卡片通用（与 templates 一致） ===== */
+  .card {
+    margin: 0 auto 26px;
+    background: rgba(255,255,255,0.9);
+    border-radius: 16px;
+    padding: 32px 30px;
+    box-shadow: 0 12px 32px rgba(106,76,147,0.22);
+    border: 1px solid rgba(255,255,255,0.6);
+  }
+  .card.fortune { width: 640px; background: linear-gradient(135deg, #FFB7C5 0%, #C8A2C8 100%); padding: 28px; }
+  .card.fortune .inner { background: rgba(255,255,255,0.9); border-radius:16px; padding:32px 30px; border:1px solid rgba(255,255,255,0.6); }
+  .card.stats { width: 680px; background: linear-gradient(135deg, #FFB7C5 0%, #C8A2C8 100%); padding: 28px; }
+  .card.stats .inner { background: rgba(255,255,255,0.88); border-radius:16px; padding:30px 26px; border:1px solid rgba(255,255,255,0.6); }
+
+  /* ===== 签到运势 ===== */
+  .top { display: flex; align-items: center; margin-bottom: 20px; }
+  .avatar {
+    width: 84px; height: 84px;
+    border-radius: 50%;
+    border: 3px solid #fff;
+    object-fit: cover;
+    margin-right: 18px;
+    background: #eee;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+  .name { font-size: 22px; font-weight: 700; color: #6A4C93; }
+  .meta { font-size: 14px; color: #8e7cc3; margin-top: 5px; }
+  .streak { color: #E74C3C; font-weight: 600; }
+  .fortune-box {
+    text-align: center;
+    padding: 22px;
+    background: linear-gradient(135deg, #FFF5F8, #F3E7F3);
+    border-radius: 12px;
+    margin: 16px 0;
+    border: 1px dashed #d9c2e8;
+  }
+  .fortune-label { font-size: 14px; color: #8e7cc3; }
+  .fortune-value {
+    font-size: 52px;
+    font-weight: 700;
+    margin: 8px 0 4px;
+    letter-spacing: 4px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  .grid { display: flex; gap: 14px; margin: 18px 0; }
+  .col {
+    flex: 1;
+    background: rgba(255,255,255,0.7);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+  }
+  .col-title { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
+  .col.yi .col-title { color: #27AE60; }
+  .col.ji .col-title { color: #E74C3C; }
+  .col ul { list-style: none; padding-left: 0; }
+  .col li { font-size: 15px; color: #444; padding: 3px 0; }
+  .lucky {
+    text-align: center;
+    margin-top: 18px;
+    font-size: 16px;
+    color: #6A4C93;
+    padding: 12px;
+    background: rgba(255,255,255,0.6);
+    border-radius: 10px;
+  }
+  .lucky span { font-size: 30px; font-weight: 700; color: #E74C3C; margin-left: 6px; }
+  .footer { text-align: center; font-size: 12px; color: #b39ddb; margin-top: 16px; }
+
+  /* ===== 发言排行 ===== */
+  .header { text-align: center; margin-bottom: 22px; }
+  .title { font-size: 30px; font-weight: 700; color: #6A4C93; letter-spacing: 2px; }
+  .subtitle { font-size: 14px; color: #8e7cc3; margin-top: 6px; }
+  .row {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    margin: 7px 0 2px 0;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.55);
+  }
+  .row.gold   { background: linear-gradient(90deg, #FFF3B0, #FFE17A); box-shadow: 0 4px 14px rgba(255,200,50,0.45); }
+  .row.silver { background: linear-gradient(90deg, #F2F2F2, #DCDCDC); box-shadow: 0 4px 12px rgba(160,160,160,0.35); }
+  .row.bronze { background: linear-gradient(90deg, #FFE0CC, #F5B78A); box-shadow: 0 4px 12px rgba(205,127,50,0.35); }
+  .rank { width: 40px; font-size: 22px; font-weight: 700; color: #6A4C93; text-align: center; flex-shrink: 0; }
+  .avatar.s { width: 48px; height: 48px; border: 2px solid #fff; margin: 0 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+  .rname { flex: 1; font-size: 16px; color: #3a3a3a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+  .count { font-size: 16px; font-weight: 700; color: #E74C3C; margin: 0 10px; white-space: nowrap; }
+  .percent { font-size: 13px; color: #888; width: 64px; text-align: right; white-space: nowrap; }
+  .total { font-size: 14px; color: #6A4C93; margin-top: 10px; }
+  .total b { font-size: 19px; color: #E74C3C; font-weight: 700; }
+  .bar-wrap { height: 8px; background: rgba(106,76,147,0.12); border-radius: 4px; margin: 0 16px 6px 16px; overflow: hidden; }
+  .bar { height: 100%; background: linear-gradient(90deg, #FFB7C5, #C8A2C8); border-radius: 4px; min-width: 3px; }
+</style>
+</head>
+<body>
+  <div class="page-title">🌸 Yuki · 渲染样式预览</div>
+
+  <div class="section-label">— 签到 / 运势（大吉）—</div>
+  <div class="card fortune"><div class="inner">
+    <div class="top">
+      <img class="avatar" src="https://q1.qlogo.cn/g?b=qq&nk=10001&s=100">
+      <div>
+        <div class="name">星野绽放</div>
+        <div class="meta">📅 2026-08-06 · <span class="streak">连续签到 7 天</span></div>
+      </div>
+    </div>
+    <div class="fortune-box">
+      <div class="fortune-label">今日运势</div>
+      <div class="fortune-value" style="color:#E74C3C;">大吉</div>
+    </div>
+    <div class="grid">
+      <div class="col yi"><div class="col-title">✨ 宜</div><ul><li>看番</li><li>追番</li><li>打音游</li></ul></div>
+      <div class="col ji"><div class="col-title">🚫 忌</div><ul><li>断网</li><li>催更</li></ul></div>
+    </div>
+    <div class="lucky">🍀 幸运数字 <span>88</span></div>
+    <div class="footer">🌸 Yuki · 签到运势</div>
+  </div></div>
+
+  <div class="section-label">— 签到 / 运势（中吉）—</div>
+  <div class="card fortune"><div class="inner">
+    <div class="top">
+      <img class="avatar" src="https://q1.qlogo.cn/g?b=qq&nk=10002&s=100">
+      <div>
+        <div class="name">月下旅人</div>
+        <div class="meta">📅 2026-08-06 · <span class="streak">连续签到 3 天</span></div>
+      </div>
+    </div>
+    <div class="fortune-box">
+      <div class="fortune-label">今日运势</div>
+      <div class="fortune-value" style="color:#F39C12;">中吉</div>
+    </div>
+    <div class="grid">
+      <div class="col yi"><div class="col-title">✨ 宜</div><ul><li>发弹幕</li><li>刷推</li><li>买谷</li></ul></div>
+      <div class="col ji"><div class="col-title">🚫 忌</div><ul><li>抽卡沉船</li><li>加班</li></ul></div>
+    </div>
+    <div class="lucky">🍀 幸运数字 <span>42</span></div>
+    <div class="footer">🌸 Yuki · 签到运势</div>
+  </div></div>
+
+  <div class="section-label">— 签到 / 运势（凶）—</div>
+  <div class="card fortune"><div class="inner">
+    <div class="top">
+      <img class="avatar" src="https://q1.qlogo.cn/g?b=qq&nk=10003&s=100">
+      <div>
+        <div class="name">初音未来</div>
+        <div class="meta">📅 2026-08-06 · <span class="streak">连续签到 1 天</span></div>
+      </div>
+    </div>
+    <div class="fortune-box">
+      <div class="fortune-label">今日运势</div>
+      <div class="fortune-value" style="color:#7F8C8D;">凶</div>
+    </div>
+    <div class="grid">
+      <div class="col yi"><div class="col-title">✨ 宜</div><ul><li>补番</li><li>听V家</li></ul></div>
+      <div class="col ji"><div class="col-title">🚫 忌</div><ul><li>吃刀子</li><li>被剧透</li><li>弃坑</li></ul></div>
+    </div>
+    <div class="lucky">🍀 幸运数字 <span>13</span></div>
+    <div class="footer">🌸 Yuki · 签到运势</div>
+  </div></div>
+
+  <div class="section-label">— 发言排行（金银铜高亮）—</div>
+  <div class="card stats"><div class="inner">
+    <div class="header">
+      <div class="title">🏆 发言排行榜</div>
+      <div class="subtitle">群 123456789 · Top 10</div>
+      <div class="total">📊 总消息数 <b>500</b> 条</div>
+    </div>
+    <div class="row gold"><div class="rank">1</div><img class="avatar s" src="https://q1.qlogo.cn/g?b=qq&nk=10001&s=100"><div class="rname">星野绽放</div><div class="count">128 条</div><div class="percent">21.3%</div></div>
+    <div class="bar-wrap"><div class="bar" style="width:21.3%"></div></div>
+    <div class="row silver"><div class="rank">2</div><img class="avatar s" src="https://q1.qlogo.cn/g?b=qq&nk=10002&s=100"><div class="rname">月下旅人</div><div class="count">96 条</div><div class="percent">16.0%</div></div>
+    <div class="bar-wrap"><div class="bar" style="width:16.0%"></div></div>
+    <div class="row bronze"><div class="rank">3</div><img class="avatar s" src="https://q1.qlogo.cn/g?b=qq&nk=10003&s=100"><div class="rname">初音未来</div><div class="count">80 条</div><div class="percent">13.3%</div></div>
+    <div class="bar-wrap"><div class="bar" style="width:13.3%"></div></div>
+    <div class="row"><div class="rank">4</div><img class="avatar s" src="https://q1.qlogo.cn/g?b=qq&nk=10004&s=100"><div class="rname">樱井桃华</div><div class="count">64 条</div><div class="percent">10.7%</div></div>
+    <div class="bar-wrap"><div class="bar" style="width:10.7%"></div></div>
+    <div class="row"><div class="rank">5</div><img class="avatar s" src="https://q1.qlogo.cn/g?b=qq&nk=10005&s=100"><div class="rname">雪之下</div><div class="count">50 条</div><div class="percent">8.3%</div></div>
+    <div class="bar-wrap"><div class="bar" style="width:8.3%"></div></div>
+    <div class="row"><div class="rank">6</div><img class="avatar s" src="https://q1.qlogo.cn/g?b=qq&nk=10006&s=100"><div class="rname">夜空中最亮的星</div><div class="count">42 条</div><div class="percent">7.0%</div></div>
+    <div class="bar-wrap"><div class="bar" style="width:7.0%"></div></div>
+    <div class="row"><div class="rank">7</div><img class="avatar s" src="https://q1.qlogo.cn/g?b=qq&nk=10007&s=100"><div class="rname">柠檬不酸</div><div class="count">30 条</div><div class="percent">5.0%</div></div>
+    <div class="bar-wrap"><div class="bar" style="width:5.0%"></div></div>
+    <div class="row"><div class="rank">8</div><img class="avatar s" src="https://q1.qlogo.cn/g?b=qq&nk=10008&s=100"><div class="rname">匿名水怪</div><div class="count">10 条</div><div class="percent">1.7%</div></div>
+    <div class="bar-wrap"><div class="bar" style="width:1.7%"></div></div>
+    <div class="footer">🌸 Yuki · 数据仅供参考</div>
+  </div></div>
+
+</body>
+</html>

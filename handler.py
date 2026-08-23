@@ -35,6 +35,7 @@ import aiofiles
 import aiohttp
 
 import onebot
+from features import load_features
 from repeat import RepeatDetector
 
 logger = logging.getLogger("handler")
@@ -100,6 +101,8 @@ class MessageHandler:
         self._tracked_lock = asyncio.Lock()
         self._rng = random.Random()
         self._repeat = RepeatDetector()
+        # 功能开关（config.json，见 features.py；读取失败 → 全部启用）
+        self.features: Dict[str, bool] = load_features()
         self._ensure_files()
         # 内存缓存：追踪短语列表（避免每条消息都读文件）
         self._tracked_phrases: List[str] = self._load_tracked_phrases_sync()
@@ -153,69 +156,79 @@ class MessageHandler:
         if self_id is not None and user_id == self_id:
             return
 
-        # 被动统计：任何群消息都计入
+        # 被动统计：任何群消息都计入（排行/趋势/个人查询都依赖，不设开关）
         await self._record_message(group_id, user_id, nickname)
         # 特定发言追踪（跳过 / 开头的指令消息，避免查询指令被误统计）
-        if not raw.startswith("/"):
+        if not raw.startswith("/") and self.features.get("phrase_stats", True):
             await self._record_phrase_stats(group_id, user_id, nickname, raw_message)
 
         ws = self.ob.ws
 
         # 指令（@bot 已下线：@ 消息交给 astrbot 处理，本程序不再回复 @）
-        if raw in (COMMAND_STATS, COMMAND_STATS_ALIAS, COMMAND_STATS_TODAY):
+        # 各功能受 config.json 开关控制（见 features.py），停用的指令静默不响应
+        if self.features.get("stats", True) and raw in (
+            COMMAND_STATS, COMMAND_STATS_ALIAS, COMMAND_STATS_TODAY
+        ):
             await self._cmd_stats(group_id, is_yesterday=False)
             return
-        if raw in (COMMAND_YESTERDAY_STATS, COMMAND_YESTERDAY_STATS_ALIAS):
+        if self.features.get("stats", True) and raw in (
+            COMMAND_YESTERDAY_STATS, COMMAND_YESTERDAY_STATS_ALIAS
+        ):
             await self._cmd_stats(group_id, is_yesterday=True)
             return
         # /发言趋势 / /趋势 [QQ号|@用户|昵称] → 近 7 天发言趋势折线图（无参数查自己）
-        if raw in (COMMAND_TREND, COMMAND_TREND_ALIAS):
-            await self._cmd_trend(group_id, user_id, nickname, "")
-            return
-        if raw.startswith(COMMAND_TREND + " ") or raw.startswith(COMMAND_TREND_ALIAS + " "):
-            prefix = COMMAND_TREND if raw.startswith(COMMAND_TREND + " ") else COMMAND_TREND_ALIAS
-            arg = raw[len(prefix) + 1:].strip()
-            await self._cmd_trend(group_id, user_id, nickname, arg)
-            return
+        if self.features.get("trend", True):
+            if raw in (COMMAND_TREND, COMMAND_TREND_ALIAS):
+                await self._cmd_trend(group_id, user_id, nickname, "")
+                return
+            if raw.startswith(COMMAND_TREND + " ") or raw.startswith(COMMAND_TREND_ALIAS + " "):
+                prefix = COMMAND_TREND if raw.startswith(COMMAND_TREND + " ") else COMMAND_TREND_ALIAS
+                arg = raw[len(prefix) + 1:].strip()
+                await self._cmd_trend(group_id, user_id, nickname, arg)
+                return
         # /查发言 或 /发言 不带参数 → 查自己的今日+昨日发言数据
         # （/发言排行 /发言榜 /发言趋势 均为更长指令，不会误触）
-        if raw in (COMMAND_USER_STATS, COMMAND_USER_STATS_ALIAS):
-            await self._cmd_user_stats(group_id, str(user_id))
-            return
-        # /查发言 或 /发言 <QQ号|@用户|昵称>（注意带空格才匹配，避免和 /发言榜 等冲突）
-        if raw.startswith(COMMAND_USER_STATS + " ") or raw.startswith(COMMAND_USER_STATS_ALIAS + " "):
-            prefix = COMMAND_USER_STATS if raw.startswith(COMMAND_USER_STATS + " ") else COMMAND_USER_STATS_ALIAS
-            arg = raw[len(prefix) + 1:].strip()
-            await self._cmd_user_stats(group_id, arg)
-            return
+        if self.features.get("user_stats", True):
+            if raw in (COMMAND_USER_STATS, COMMAND_USER_STATS_ALIAS):
+                await self._cmd_user_stats(group_id, str(user_id))
+                return
+            # /查发言 或 /发言 <QQ号|@用户|昵称>（注意带空格才匹配，避免和 /发言榜 等冲突）
+            if raw.startswith(COMMAND_USER_STATS + " ") or raw.startswith(COMMAND_USER_STATS_ALIAS + " "):
+                prefix = COMMAND_USER_STATS if raw.startswith(COMMAND_USER_STATS + " ") else COMMAND_USER_STATS_ALIAS
+                arg = raw[len(prefix) + 1:].strip()
+                await self._cmd_user_stats(group_id, arg)
+                return
         # 管理员指令：/统计发言 <短语> 和 /删除统计 <短语>（仅管理员可用）
-        if raw.startswith(COMMAND_TRACK_PHRASE + " "):
-            phrase = raw[len(COMMAND_TRACK_PHRASE) + 1:].strip()
-            await self._cmd_track_phrase(group_id, user_id, phrase)
-            return
-        if raw.startswith(COMMAND_UNTRACK_PHRASE + " "):
-            phrase = raw[len(COMMAND_UNTRACK_PHRASE) + 1:].strip()
-            await self._cmd_untrack_phrase(group_id, user_id, phrase)
-            return
-        # /昨日数据 <短语> → 昨日特定发言统计
-        if raw.startswith(COMMAND_YESTERDAY_PHRASE + " "):
-            phrase = raw[len(COMMAND_YESTERDAY_PHRASE) + 1:].strip()
-            await self._cmd_phrase_stats(group_id, phrase, is_yesterday=True)
-            return
-        if raw in (COMMAND_HELP, COMMAND_HELP_ALIAS):
+        if self.features.get("phrase_stats", True):
+            if raw.startswith(COMMAND_TRACK_PHRASE + " "):
+                phrase = raw[len(COMMAND_TRACK_PHRASE) + 1:].strip()
+                await self._cmd_track_phrase(group_id, user_id, phrase)
+                return
+            if raw.startswith(COMMAND_UNTRACK_PHRASE + " "):
+                phrase = raw[len(COMMAND_UNTRACK_PHRASE) + 1:].strip()
+                await self._cmd_untrack_phrase(group_id, user_id, phrase)
+                return
+            # /昨日数据 <短语> → 昨日特定发言统计
+            if raw.startswith(COMMAND_YESTERDAY_PHRASE + " "):
+                phrase = raw[len(COMMAND_YESTERDAY_PHRASE) + 1:].strip()
+                await self._cmd_phrase_stats(group_id, phrase, is_yesterday=True)
+                return
+        if self.features.get("help", True) and raw in (COMMAND_HELP, COMMAND_HELP_ALIAS):
             await self._cmd_help(group_id)
             return
-        if raw in (COMMAND_SIGN, COMMAND_FORTUNE):
+        if self.features.get("sign", True) and raw in (COMMAND_SIGN, COMMAND_FORTUNE):
             await self._cmd_sign(group_id, user_id, nickname)
             return
         # /<追踪短语> → 今日特定发言统计（放在所有指令之后，避免和 /签到 等冲突）
-        if raw.startswith("/") and len(raw) > 1:
+        if self.features.get("phrase_stats", True) and raw.startswith("/") and len(raw) > 1:
             phrase = raw[1:]
             if phrase in self._tracked_phrases:
                 await self._cmd_phrase_stats(group_id, phrase, is_yesterday=False)
                 return
 
         # 3. 三人复读（仅纯文本参与；命中后本波次只发一次）
+        if not self.features.get("repeat", True):
+            return
         repeat_text = self._repeat.check_and_trigger(group_id, user_id, self_id, raw)
         if repeat_text is not None:
             try:
@@ -771,11 +784,16 @@ class MessageHandler:
     async def _cmd_help(self, group_id: int) -> None:
         ws = self.ob.ws
         try:
-            image_b64 = await self.renderer.render_help()
+            image_b64 = await self.renderer.render_help(features=self.features)
             await onebot.send_group_image_b64(ws, group_id, image_b64)
         except Exception as e:
             logger.exception("帮助菜单生成失败: %s", e)
             await onebot.send_group_text(ws, group_id, f"帮助菜单生成失败了：{e}")
+
+    def log_features(self) -> None:
+        """启动时输出各功能开关状态（由 main.py 在启动日志中调用）。"""
+        parts = [f"{name}={'on' if flag else 'off'}" for name, flag in self.features.items()]
+        logger.info("功能开关：%s", " ".join(parts))
 
     # ---------- 头像拉取 ----------
     async def _fetch_avatar_b64(self, user_id: Any) -> str:

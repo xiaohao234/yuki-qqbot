@@ -9,6 +9,9 @@ venv/
 data/
 *.json.tmp
 
+# 本机功能开关配置（模板见 config.example.json）
+config.json
+
 # 本地备份与临时文件
 backup/
 _dirlist.txt

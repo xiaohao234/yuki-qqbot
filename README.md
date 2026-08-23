@@ -120,6 +120,30 @@ python main.py
 | `BOT_PORT`    | `8082`      | 监听端口                                       |
 | `BOT_DATA_DIR`| `<项目>/data` | 数据目录（可指向持久卷；测试用临时目录避免污染） |
 | `BOT_ADMIN_QQ`| `0`         | 管理员 QQ（使用 /统计发言 /删除统计 需设置）    |
+| `BOT_CONFIG_PATH`| `<项目>/config.json` | 功能开关配置文件路径                     |
+
+### 功能开关（config.json）
+
+复制 `config.example.json` 为 `config.json`，把不想用的功能改成 `false` 即可：
+
+```json
+{
+  "features": {
+    "stats": true,        // 发言排行（/发言排行 /发言榜 /今日发言榜 /昨日发言 /昨日发言榜）
+    "user_stats": true,   // 个人查询（/查发言 /发言）
+    "trend": true,        // 发言趋势（/发言趋势 /趋势）
+    "phrase_stats": true, // 特定发言统计（/统计发言 /删除统计 /昨日数据 /<短语>）
+    "sign": true,         // 签到运势（/签到 /运势）
+    "repeat": true,       // 三人复读
+    "help": true          // 帮助菜单（/yukihelp //help）
+  }
+}
+```
+
+- 停用的指令静默不响应；帮助菜单图片中对应功能会置灰并标注「已停用」
+- 启动日志会打印所有开关状态：`功能开关：stats=on user_stats=on ...`
+- 文件不存在 / JSON 损坏 / 含未知开关 → 全部功能按默认（启用）运行，不影响使用
+- 修改后需重启生效
 
 > 若 NapCat 部署在**另一台机器**：`BOT_HOST=0.0.0.0 python main.py`，
 > 并在宝塔「安全」里放行 8082 端口。

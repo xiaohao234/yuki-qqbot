@@ -64,6 +64,8 @@ async def _on_startup(app: web.Application) -> None:
     _renderer = Renderer(_browser, TEMPLATES_DIR)
     handler = MessageHandler(ob_conn, _renderer, _http_session, DATA_DIR)
 
+    # 启动时输出各功能开关状态（config.json，见 features.py）
+    handler.log_features()
     logger.info("Yuki 已启动，监听 ws://%s:%s （等待 NapCat 反向连接）", HOST, PORT)
 
 

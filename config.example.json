@@ -1,0 +1,11 @@
+{
+  "features": {
+    "stats": true,
+    "user_stats": true,
+    "trend": true,
+    "phrase_stats": true,
+    "sign": true,
+    "repeat": true,
+    "help": true
+  }
+}

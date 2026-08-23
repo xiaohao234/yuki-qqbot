@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import base64
 import logging
-from typing import Any, List
+from typing import Any, Dict, List
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -152,9 +152,13 @@ class Renderer:
         )
         return await self.render_html_to_png_b64(html)
 
-    async def render_help(self) -> str:
-        """渲染帮助菜单图片（指令列表静态写在 help.html 中，新增指令时同步更新模板）。"""
-        html = self._render("help.html")
+    async def render_help(self, features: Dict[str, bool] | None = None) -> str:
+        """渲染帮助菜单图片（指令列表静态写在 help.html 中，新增指令时同步更新模板）。
+
+        features 为功能开关（handler.features），停用的功能组在图中置灰并标注"已停用"。
+        """
+        features = features or {}
+        html = self._render("help.html", features=features)
         return await self.render_html_to_png_b64(html)
 
     @staticmethod

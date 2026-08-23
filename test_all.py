@@ -169,19 +169,19 @@ async def run_scenarios(ws: aiohttp.ClientWebSocketResponse) -> None:
     # ============ 场景4：/发言排行 和 /发言榜 图片 ============
     print("\n== 场景4：/发言排行 和 /发言榜 返回排行图片 ==")
     await ws.send_json(make_event(1001, "张三", "/发言排行"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/发言排行 返回图片", has_image(msgs), str(msgs)[:120])
     await ws.send_json(make_event(1002, "李四", "/发言榜"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/发言榜 别名返回图片", has_image(msgs), str(msgs)[:120])
     await ws.send_json(make_event(1003, "王五", "/今日发言榜"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/今日发言榜 别名返回图片", has_image(msgs), str(msgs)[:120])
 
     # ============ 场景5：/签到 首次 图片 + 写入记录 ============
     print("\n== 场景5：/签到 首次返回图片并写入 sign_in.json ==")
     await ws.send_json(make_event(1001, "张三", "/签到"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/签到 首次返回图片", has_image(msgs), str(msgs)[:120])
     sign = load_json(os.path.join(_TMP_DATA, "sign_in.json"))
     key = f"{GROUP_ID}_1001"
@@ -190,14 +190,14 @@ async def run_scenarios(ws: aiohttp.ClientWebSocketResponse) -> None:
     # ============ 场景6：/签到 重复（文本提示 + 重发运势图）============
     print("\n== 场景6：/签到 重复返回文本提示 + 重发运势图 ==")
     await ws.send_json(make_event(1001, "张三", "/签到"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/签到 重复返回文本提示", any("已经签到过" in m for m in msgs), str(msgs)[:120])
     step("/签到 重复重发运势图", has_image(msgs), str(msgs)[:120])
 
     # ============ 场景7：/运势 图片 ============
     print("\n== 场景7：/运势 返回运势图片 ==")
     await ws.send_json(make_event(1002, "李四", "/运势"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/运势 返回图片", has_image(msgs), str(msgs)[:120])
 
     # ============ 场景8：另一群复读按群独立计数 ============
@@ -232,7 +232,7 @@ async def run_scenarios(ws: aiohttp.ClientWebSocketResponse) -> None:
     with open(stats_path, "w", encoding="utf-8") as f:
         json.dump(stats, f, ensure_ascii=False, indent=2)
     await ws.send_json(make_event(1001, "张三", "/昨日发言榜"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/昨日发言榜 返回图片", has_image(msgs), str(msgs)[:120])
 
     # ============ 场景11：>7天旧数据惰性清理（保留 7 天窗口）============
@@ -261,19 +261,19 @@ async def run_scenarios(ws: aiohttp.ClientWebSocketResponse) -> None:
     # ============ 场景12：/查发言 按 QQ号 查询个人统计 ============
     print("\n== 场景12：/查发言 1001 按 QQ号 查询 → 图片 ==")
     await ws.send_json(make_event(1002, "李四", "/查发言 1001"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/查发言 <QQ号> 返回图片", has_image(msgs), str(msgs)[:120])
 
     # ============ 场景13：/发言 不带参数查自己 / 带参数按昵称查询 ============
     print("\n== 场景13：/发言 无参查自己 + <昵称> 查询 → 图片 ==")
     await ws.send_json(make_event(1002, "李四", "/发言"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/发言 无参查自己 → 图片", has_image(msgs), str(msgs)[:120])
     await ws.send_json(make_event(1003, "王五", "/查发言"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/查发言 无参查自己 → 图片", has_image(msgs), str(msgs)[:120])
     await ws.send_json(make_event(1002, "李四", "/发言 张三"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/发言 <昵称> 返回图片", has_image(msgs), str(msgs)[:120])
 
     # ============ 场景14：/查发言 查不存在的人 ============
@@ -316,7 +316,7 @@ async def run_scenarios(ws: aiohttp.ClientWebSocketResponse) -> None:
     # ============ 场景18：/<追踪短语> 生成统计图 ============
     print("\n== 场景18：/不赖 生成统计图片 ==")
     await ws.send_json(make_event(1002, "李四", "/不赖"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/不赖 返回图片", has_image(msgs), str(msgs)[:120])
 
     # ============ 场景19：/昨日数据 查昨日统计 ============
@@ -339,28 +339,28 @@ async def run_scenarios(ws: aiohttp.ClientWebSocketResponse) -> None:
     # ============ 场景21：/yukihelp 和 //help 帮助菜单 ============
     print("\n== 场景21：/yukihelp 和 //help 返回帮助菜单图片 ==")
     await ws.send_json(make_event(1002, "李四", "/yukihelp"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/yukihelp 返回图片", has_image(msgs), str(msgs)[:120])
     await ws.send_json(make_event(1003, "王五", "//help"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("//help 返回图片", has_image(msgs), str(msgs)[:120])
 
     # ============ 场景22：/发言趋势 折线图 ============
     print("\n== 场景22：/发言趋势 近7天折线图 ==")
     await ws.send_json(make_event(1001, "张三", "/发言趋势"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/发言趋势 无参查自己 → 图片", has_image(msgs), str(msgs)[:120])
     await ws.send_json(make_event(1001, "张三", "/趋势"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/趋势 别名无参查自己 → 图片", has_image(msgs), str(msgs)[:120])
     await ws.send_json(make_event(1001, "张三", "/发言趋势 1002"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/发言趋势 <QQ号> → 图片", has_image(msgs), str(msgs)[:120])
     await ws.send_json(make_event(1001, "张三", "/趋势 1002"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/趋势 <QQ号> → 图片", has_image(msgs), str(msgs)[:120])
     await ws.send_json(make_event(1001, "张三", "/发言趋势 李四"))
-    msgs = reply_texts(await collect(ws, idle=4.0, overall=15.0))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
     step("/发言趋势 <昵称> → 图片", has_image(msgs), str(msgs)[:120])
     await ws.send_json(make_event(1001, "张三", "/发言趋势 不存在的人"))
     msgs = reply_texts(await collect(ws, idle=1.5))

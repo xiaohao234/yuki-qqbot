@@ -860,12 +860,12 @@ class MessageHandler:
             self.features[key] = turn_on  # 原地修改（读多写少，dict 单键赋值线程安全）
             await self._save_config()     # 持久化，重启后保持
 
-            verb, mark = ("启用", "✅") if turn_on else ("停用", "⛔")
+            verb = "启用" if turn_on else "停用"
             extra = ""
             if key == "help" and not turn_on:
                 extra = "\n⚠️ 帮助菜单入口已停用，发送 /start help 可随时恢复~"
             await onebot.send_group_text(
-                ws, group_id, f"已{verb}「{FEATURE_NAMES[key]}」{mark}（立即生效，无需重启）{extra}"
+                ws, group_id, f"已{verb}「{FEATURE_NAMES[key]}」{extra}"
             )
             logger.info("功能开关热切换：%s=%s（by %s）", key, turn_on, user_id)
         except Exception as e:

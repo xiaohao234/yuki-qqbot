@@ -35,7 +35,7 @@ import aiofiles
 import aiohttp
 
 import onebot
-from features import load_features
+from features import DEFAULT_FEATURES, config_path, load_features
 from repeat import RepeatDetector
 
 logger = logging.getLogger("handler")
@@ -70,6 +70,30 @@ COMMAND_HELP = "/yukihelp"
 COMMAND_HELP_ALIAS = "//help"
 COMMAND_TREND = "/发言趋势"
 COMMAND_TREND_ALIAS = "/趋势"
+COMMAND_FEATURE_OFF = "/stop"
+COMMAND_FEATURE_ON = "/start"
+
+# 功能 key → 中文名（/stop /start 指令及帮助菜单展示用）
+FEATURE_NAMES: Dict[str, str] = {
+    "stats": "发言排行",
+    "user_stats": "个人发言查询",
+    "trend": "发言趋势",
+    "phrase_stats": "特定发言统计",
+    "sign": "签到运势",
+    "repeat": "三人复读",
+    "help": "帮助菜单",
+}
+
+# 功能别名（中文/英文均可）→ key；新功能在此登记别名
+FEATURE_ALIASES: Dict[str, str] = {
+    "stats": "stats", "排行": "stats", "发言排行": "stats",
+    "user_stats": "user_stats", "查发言": "user_stats", "个人查询": "user_stats",
+    "trend": "trend", "趋势": "trend", "发言趋势": "trend",
+    "phrase_stats": "phrase_stats", "短语": "phrase_stats", "特定发言": "phrase_stats",
+    "sign": "sign", "签到": "sign", "运势": "sign",
+    "repeat": "repeat", "复读": "repeat",
+    "help": "help", "帮助": "help", "菜单": "help",
+}
 
 # 数据保留天数（今天 + 前 6 天 = 7 天），/昨日发言 /昨日数据 等原有查询不受影响
 STATS_RETENTION_DAYS = 7
@@ -99,6 +123,8 @@ class MessageHandler:
         self._sign_lock = asyncio.Lock()
         self._phrase_stats_lock = asyncio.Lock()
         self._tracked_lock = asyncio.Lock()
+        self._config_lock = asyncio.Lock()
+        self.config_path = config_path()
         self._rng = random.Random()
         self._repeat = RepeatDetector()
         # 功能开关（config.json，见 features.py；读取失败 → 全部启用）
@@ -213,6 +239,15 @@ class MessageHandler:
                 phrase = raw[len(COMMAND_YESTERDAY_PHRASE) + 1:].strip()
                 await self._cmd_phrase_stats(group_id, phrase, is_yesterday=True)
                 return
+        # 管理员热切换功能开关：/stop /start [功能]（不受任何开关控制，保证随时可恢复）
+        if raw == COMMAND_FEATURE_OFF or raw.startswith(COMMAND_FEATURE_OFF + " "):
+            arg = raw[len(COMMAND_FEATURE_OFF):].strip()
+            await self._cmd_feature_switch(group_id, user_id, False, arg)
+            return
+        if raw == COMMAND_FEATURE_ON or raw.startswith(COMMAND_FEATURE_ON + " "):
+            arg = raw[len(COMMAND_FEATURE_ON):].strip()
+            await self._cmd_feature_switch(group_id, user_id, True, arg)
+            return
         if self.features.get("help", True) and raw in (COMMAND_HELP, COMMAND_HELP_ALIAS):
             await self._cmd_help(group_id)
             return
@@ -789,6 +824,72 @@ class MessageHandler:
         except Exception as e:
             logger.exception("帮助菜单生成失败: %s", e)
             await onebot.send_group_text(ws, group_id, f"帮助菜单生成失败了：{e}")
+
+    # ---------- 功能开关热切换（管理员）----------
+    async def _cmd_feature_switch(self, group_id: int, user_id: int, turn_on: bool, arg: str) -> None:
+        """管理员热切换功能开关（立即生效并写回 config.json）。
+
+        /stop /start 不带参数 → 列出全部功能当前状态；
+        带参数 → 切换指定功能（支持中文别名或英文 key，如：/stop 签到、/start repeat）。
+        """
+        ws = self.ob.ws
+        if str(user_id) != ADMIN_QQ:
+            await onebot.send_group_text(ws, group_id, "只有管理员才能使用此指令~")
+            return
+        try:
+            # 不带参数 → 列出全部功能状态
+            if not arg:
+                lines = []
+                for k in DEFAULT_FEATURES:  # 固定顺序展示
+                    on = self.features.get(k, True)
+                    lines.append(f"{'✅' if on else '⛔'} {FEATURE_NAMES[k]}（{k}）")
+                text = (
+                    "当前功能开关：\n" + "\n".join(lines)
+                    + "\n用法：/stop <功能> 停用，/start <功能> 启用（立即生效，无需重启）"
+                )
+                await onebot.send_group_text(ws, group_id, text)
+                return
+
+            key = FEATURE_ALIASES.get(arg) or FEATURE_ALIASES.get(arg.lower())
+            if key is None:
+                await onebot.send_group_text(
+                    ws, group_id, f"未知功能「{arg}」，发送 /stop 查看可用功能列表~"
+                )
+                return
+
+            self.features[key] = turn_on  # 原地修改（读多写少，dict 单键赋值线程安全）
+            await self._save_config()     # 持久化，重启后保持
+
+            verb, mark = ("启用", "✅") if turn_on else ("停用", "⛔")
+            extra = ""
+            if key == "help" and not turn_on:
+                extra = "\n⚠️ 帮助菜单入口已停用，发送 /start help 可随时恢复~"
+            await onebot.send_group_text(
+                ws, group_id, f"已{verb}「{FEATURE_NAMES[key]}」{mark}（立即生效，无需重启）{extra}"
+            )
+            logger.info("功能开关热切换：%s=%s（by %s）", key, turn_on, user_id)
+        except Exception as e:
+            logger.exception("功能开关切换失败: %s", e)
+            await onebot.send_group_text(ws, group_id, f"切换功能开关失败了：{e}")
+
+    async def _save_config(self) -> None:
+        """把功能开关写回 config.json（保留其他字段，原子写）。"""
+        async with self._config_lock:
+            cfg: Dict[str, Any] = {}
+            if os.path.exists(self.config_path):
+                try:
+                    async with aiofiles.open(self.config_path, "r", encoding="utf-8") as f:
+                        content = await f.read()
+                    loaded = json.loads(content) if content.strip() else {}
+                    if isinstance(loaded, dict):
+                        cfg = loaded
+                except (json.JSONDecodeError, IOError):
+                    cfg = {}
+            cfg["features"] = dict(self.features)
+            tmp = self.config_path + ".tmp"
+            async with aiofiles.open(tmp, "w", encoding="utf-8") as f:
+                await f.write(json.dumps(cfg, ensure_ascii=False, indent=2))
+            os.replace(tmp, self.config_path)  # 原子写，避免半截文件
 
     def log_features(self) -> None:
         """启动时输出各功能开关状态（由 main.py 在启动日志中调用）。"""

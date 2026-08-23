@@ -41,12 +41,17 @@ DEFAULT_FEATURES: Dict[str, bool] = {
 }
 
 
+def config_path() -> str:
+    """配置文件路径（BOT_CONFIG_PATH 环境变量可覆盖）。"""
+    return os.environ.get("BOT_CONFIG_PATH") or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "config.json"
+    )
+
+
 def load_features() -> Dict[str, bool]:
     """加载功能开关。任何异常都回落到全默认（全部启用），并写警告日志。"""
     feats = dict(DEFAULT_FEATURES)
-    path = os.environ.get("BOT_CONFIG_PATH") or os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "config.json"
-    )
+    path = config_path()
     try:
         if not os.path.exists(path):
             return feats

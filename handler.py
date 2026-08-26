@@ -105,7 +105,7 @@ FEATURE_ALIASES: Dict[str, str] = {
 # ---------- 发言速度：时长解析与窗口常量 ----------
 
 # 滚动窗口上限（内存中最多保留这么久的历史消息时间戳；超出的惰性清理 → 内存有界）
-MAX_SPEED_WINDOW_SEC = 12 * 3600
+MAX_SPEED_WINDOW_SEC = 2 * 3600
 # 查询窗口允许的最短时长
 MIN_SPEED_WINDOW_SEC = 60
 
@@ -267,8 +267,9 @@ class MessageHandler:
 
         # 被动统计：任何群消息都计入（排行/趋势/个人查询都依赖，不设开关）
         await self._record_message(group_id, user_id, nickname)
-        # 发言速度滚动窗口（同步内存操作，无 IO）
-        self._record_msg_time(group_id, user_id, nickname)
+        # 发言速度滚动窗口（同步内存操作，无 IO；跳过指令消息，统计真实水群）
+        if not raw.startswith("/"):
+            self._record_msg_time(group_id, user_id, nickname)
         # 特定发言追踪（跳过 / 开头的指令消息，避免查询指令被误统计）
         if not raw.startswith("/") and self.features.get("phrase_stats", True):
             await self._record_phrase_stats(group_id, user_id, nickname, raw_message)

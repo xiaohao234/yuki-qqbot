@@ -28,8 +28,10 @@ import logging
 import os
 import random
 import re
+import time
+from collections import deque
 from datetime import date, datetime, timedelta
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import aiofiles
 import aiohttp
@@ -72,6 +74,10 @@ COMMAND_TREND = "/发言趋势"
 COMMAND_TREND_ALIAS = "/趋势"
 COMMAND_FEATURE_OFF = "/stop"
 COMMAND_FEATURE_ON = "/start"
+COMMAND_SPEED = "/发言速"
+COMMAND_SPEED_ALIAS = "/水群速"
+COMMAND_SPEED_ALIAS2 = "/水群"
+SPEED_COMMANDS = (COMMAND_SPEED, COMMAND_SPEED_ALIAS, COMMAND_SPEED_ALIAS2)
 
 # 功能 key → 中文名（/stop /start 指令及帮助菜单展示用）
 FEATURE_NAMES: Dict[str, str] = {
@@ -93,7 +99,81 @@ FEATURE_ALIASES: Dict[str, str] = {
     "sign": "sign", "签到": "sign", "运势": "sign",
     "repeat": "repeat", "复读": "repeat",
     "help": "help", "帮助": "help", "菜单": "help",
+    "speed": "speed", "速度": "speed", "发言速度": "speed", "水群": "speed",
 }
+
+# ---------- 发言速度：时长解析与窗口常量 ----------
+
+# 滚动窗口上限（内存中最多保留这么久的历史消息时间戳；超出的惰性清理 → 内存有界）
+MAX_SPEED_WINDOW_SEC = 12 * 3600
+# 查询窗口允许的最短时长
+MIN_SPEED_WINDOW_SEC = 60
+
+_CN_DIGITS = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
+              "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+
+# 单位 → 秒
+_SPEED_UNITS: Dict[str, int] = {
+    "s": 1, "sec": 1, "secs": 1, "秒": 1,
+    "m": 60, "min": 60, "mins": 60, "分": 60, "分钟": 60,
+    "h": 3600, "hr": 3600, "hour": 3600, "hours": 3600, "时": 3600, "小时": 3600,
+    "d": 86400, "day": 86400, "天": 86400,
+}
+
+
+def _parse_cn_int(s: str) -> Optional[int]:
+    """解析简单中文数字（0-99，如 十五/二十/三十/两）。"""
+    if not s:
+        return None
+    if "十" in s:
+        left, _, right = s.partition("十")
+        if left and left not in _CN_DIGITS:
+            return None
+        if right and right not in _CN_DIGITS:
+            return None
+        tens = _CN_DIGITS[left] if left else 1
+        ones = _CN_DIGITS[right] if right else 0
+        return tens * 10 + ones
+    total = 0
+    for ch in s:
+        if ch not in _CN_DIGITS:
+            return None
+        total = total * 10 + _CN_DIGITS[ch]
+    return total
+
+
+def parse_duration(text: str) -> Optional[int]:
+    """把时长文本解析为秒。支持：30m/30分/三十分钟/30分钟/1h/一小时/1.5h/45(默认分钟)。"""
+    t = text.strip().lower()
+    if not t:
+        return None
+    # 阿拉伯数字（含小数）
+    m = re.match(r"^(\d+(?:\.\d+)?)\s*(.*)$", t)
+    if m:
+        val = float(m.group(1))
+        unit = m.group(2)
+        if not unit:
+            return round(val * 60)  # 纯数字默认按分钟
+        unit = unit.lstrip("个")
+        return round(val * _SPEED_UNITS[unit]) if unit in _SPEED_UNITS else None
+    # 中文数字开头
+    i = 0
+    while i < len(t) and (t[i] in _CN_DIGITS or t[i] == "十"):
+        i += 1
+    n = _parse_cn_int(t[:i])
+    if n is None:
+        return None
+    unit = t[i:].lstrip("个")
+    return n * _SPEED_UNITS[unit] if unit in _SPEED_UNITS else None
+
+
+def _fmt_window(sec: int) -> str:
+    """把秒数格式化为人类可读时长（用于展示）。"""
+    if sec % 3600 == 0:
+        return f"{sec // 3600} 小时"
+    if sec >= 3600:
+        return f"{sec / 3600:g} 小时"
+    return f"{sec // 60} 分钟" if sec % 60 == 0 else f"{sec / 60:g} 分钟"
 
 # 数据保留天数（今天 + 前 6 天 = 7 天），/昨日发言 /昨日数据 等原有查询不受影响
 STATS_RETENTION_DAYS = 7
@@ -127,6 +207,9 @@ class MessageHandler:
         self.config_path = config_path()
         self._rng = random.Random()
         self._repeat = RepeatDetector()
+        # 发言速度滚动窗口：group_id(str) -> deque[(timestamp, uid, nickname)]
+        # 只保留 MAX_SPEED_WINDOW_SEC 内的消息（写入时惰性清理头部，内存有界）
+        self._msg_times: Dict[str, deque] = {}
         # 功能开关（config.json，见 features.py；读取失败 → 全部启用）
         self.features: Dict[str, bool] = load_features()
         self._ensure_files()
@@ -184,6 +267,8 @@ class MessageHandler:
 
         # 被动统计：任何群消息都计入（排行/趋势/个人查询都依赖，不设开关）
         await self._record_message(group_id, user_id, nickname)
+        # 发言速度滚动窗口（同步内存操作，无 IO）
+        self._record_msg_time(group_id, user_id, nickname)
         # 特定发言追踪（跳过 / 开头的指令消息，避免查询指令被误统计）
         if not raw.startswith("/") and self.features.get("phrase_stats", True):
             await self._record_phrase_stats(group_id, user_id, nickname, raw_message)
@@ -238,6 +323,15 @@ class MessageHandler:
             if raw.startswith(COMMAND_YESTERDAY_PHRASE + " "):
                 phrase = raw[len(COMMAND_YESTERDAY_PHRASE) + 1:].strip()
                 await self._cmd_phrase_stats(group_id, phrase, is_yesterday=True)
+                return
+        # /发言速 /水群速 /水群 [时间] → 最近一段时间的发言速度排行
+        if self.features.get("speed", True):
+            if raw in SPEED_COMMANDS:  # 无参数 → 默认 30 分钟
+                await self._cmd_speed(group_id, "")
+                return
+            matched = next((c for c in SPEED_COMMANDS if raw.startswith(c + " ")), None)
+            if matched:
+                await self._cmd_speed(group_id, raw[len(matched) + 1:].strip())
                 return
         # 管理员热切换功能开关：/stop /start [功能]（不受任何开关控制，保证随时可恢复）
         if raw == COMMAND_FEATURE_OFF or raw.startswith(COMMAND_FEATURE_OFF + " "):
@@ -594,6 +688,97 @@ class MessageHandler:
         except Exception as e:
             logger.exception("发言趋势生成失败: %s", e)
             await onebot.send_group_text(ws, group_id, f"发言趋势生成失败了：{e}")
+
+    # ---------- 发言速度 ----------
+    def _record_msg_time(self, group_id: int, user_id: int, nickname: str) -> None:
+        """把一条消息记入滚动窗口（内存），并惰性清理超窗旧数据。"""
+        gkey = str(group_id)
+        dq = self._msg_times.get(gkey)
+        if dq is None:
+            dq = deque()
+            self._msg_times[gkey] = dq
+        now = time.time()
+        dq.append((now, str(user_id), nickname))
+        cutoff = now - MAX_SPEED_WINDOW_SEC
+        while dq and dq[0][0] < cutoff:  # 时间戳单调递增，头部即最旧
+            dq.popleft()
+
+    async def _cmd_speed(self, group_id: int, arg: str) -> None:
+        """查询最近一段时间内的发言速度（总速度 + 每人速度 Top10）。
+
+        arg 支持 30m/30分/三十分钟/1h/一小时/1.5h 等；空 → 默认 30 分钟。
+        """
+        ws = self.ob.ws
+        try:
+            if arg:
+                window_sec = parse_duration(arg)
+                if window_sec is None:
+                    await onebot.send_group_text(
+                        ws, group_id,
+                        "时间参数看不懂哦~ 支持：30m、30分、三十分钟、1h、一小时、1.5h（分钟/小时）",
+                    )
+                    return
+            else:
+                window_sec = 1800  # 默认 30 分钟
+            if window_sec < MIN_SPEED_WINDOW_SEC:
+                await onebot.send_group_text(
+                    ws, group_id, f"时间窗口太短啦，最短支持 {_fmt_window(MIN_SPEED_WINDOW_SEC)}~"
+                )
+                return
+            if window_sec > MAX_SPEED_WINDOW_SEC:
+                await onebot.send_group_text(
+                    ws, group_id, f"时间窗口太长啦，最长支持 {_fmt_window(MAX_SPEED_WINDOW_SEC)}~"
+                )
+                return
+
+            cutoff = time.time() - window_sec
+            per_user: Dict[str, List] = {}  # uid -> [nickname, count]
+            total = 0
+            dq = self._msg_times.get(str(group_id))
+            if dq:
+                # 从最新往回扫，遇到早于窗口起点即可停止
+                for ts, uid, nick in reversed(dq):
+                    if ts < cutoff:
+                        break
+                    total += 1
+                    rec = per_user.setdefault(uid, [nick, 0])
+                    rec[0] = nick  # 用最新昵称
+                    rec[1] += 1
+
+            window_label = _fmt_window(window_sec)
+            if total == 0:
+                await onebot.send_group_text(
+                    ws, group_id, f"最近 {window_label} 本群还没有发言记录~"
+                )
+                return
+
+            minutes = window_sec / 60
+            speed = round(total / minutes, 1)
+            items = sorted(per_user.items(), key=lambda kv: kv[1][1], reverse=True)[:10]
+            top_users: List[dict] = []
+            for i, (uid, (nick, cnt)) in enumerate(items, 1):
+                avatar_b64 = await self._fetch_avatar_b64(uid)
+                top_users.append({
+                    "rank": i,
+                    "user_id": uid,
+                    "nickname": nick,
+                    "avatar_b64": avatar_b64,
+                    "count": cnt,
+                    "rate": round(cnt / minutes, 1),  # 该用户条/分钟
+                    "percent": round(cnt * 100 / total, 1),
+                })
+
+            image_b64 = await self.renderer.render_speed(
+                window_label=window_label,
+                top_users=top_users,
+                total=total,
+                speed=speed,
+                active_users=len(per_user),
+            )
+            await onebot.send_group_image_b64(ws, group_id, image_b64)
+        except Exception as e:
+            logger.exception("发言速度查询失败: %s", e)
+            await onebot.send_group_text(ws, group_id, f"发言速度查询失败了：{e}")
 
     # ---------- 特定发言追踪 ----------
 

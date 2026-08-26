@@ -371,6 +371,38 @@ async def run_scenarios(ws: aiohttp.ClientWebSocketResponse) -> None:
     step("/发言趋势 无记录用户 → 提示",
          any("没有发言记录" in m for m in msgs), str(msgs)[:120])
 
+    # ============ 场景23：/发言速 /水群速 /水群 发言速度 ============
+    print("\n== 场景23：/发言速 /水群速 /水群 发言速度 ==")
+    # 造几条消息进滚动窗口
+    for uid, nick in [(1002, "李四"), (1002, "李四"), (1003, "王五")]:
+        await ws.send_json(make_event(uid, nick, "水群消息"))
+        await collect(ws, idle=0.4)
+    await ws.send_json(make_event(1001, "张三", "/发言速 30m"))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
+    step("/发言速 30m → 图片", has_image(msgs), str(msgs)[:120])
+    await ws.send_json(make_event(1001, "张三", "/水群速 1h"))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
+    step("/水群速 1h → 图片", has_image(msgs), str(msgs)[:120])
+    await ws.send_json(make_event(1002, "李四", "/水群"))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
+    step("/水群 无参默认30分钟 → 图片", has_image(msgs), str(msgs)[:120])
+    await ws.send_json(make_event(1001, "张三", "/发言速 三十分钟"))
+    msgs = reply_texts(await collect(ws, idle=20.0, overall=60.0))
+    step("/发言速 三十分钟（中文）→ 图片", has_image(msgs), str(msgs)[:120])
+    await ws.send_json(make_event(1001, "张三", "/水群 abc"))
+    msgs = reply_texts(await collect(ws, idle=1.5))
+    step("/水群 abc → 格式提示", any("看不懂" in m for m in msgs), str(msgs)[:120])
+    await ws.send_json(make_event(1001, "张三", "/发言速 1s"))
+    msgs = reply_texts(await collect(ws, idle=1.5))
+    step("/发言速 1s → 太短提示", any("太短" in m for m in msgs), str(msgs)[:120])
+    await ws.send_json(make_event(1001, "张三", "/发言速 2d"))
+    msgs = reply_texts(await collect(ws, idle=1.5))
+    step("/发言速 2d → 太长提示", any("太长" in m for m in msgs), str(msgs)[:120])
+    # 无发言的群 → 无数据提示
+    await ws.send_json(make_event(1001, "张三", "/水群 5m", group_id=555888))
+    msgs = reply_texts(await collect(ws, idle=1.5))
+    step("/水群 无发言群 → 提示", any("还没有发言记录" in m for m in msgs), str(msgs)[:120])
+
 
 async def amain() -> int:
     print(f"Python {sys.version.split()[0]}")

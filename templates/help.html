@@ -164,6 +164,10 @@
         <span class="cmd-code">/昨日发言 或 /昨日发言榜</span>
         <span class="cmd-desc">昨日发言排行榜（已定格，不再更新）</span>
       </div>
+      <div class="cmd{% if not features.get('speed', True) %} off{% endif %}">
+        <span class="cmd-code">/发言速 或 /水群速 或 /水群 [&lt;时间&gt;]{% if not features.get('speed', True) %} <span class="off-badge">已停用</span>{% endif %}</span>
+        <span class="cmd-desc">最近一段时间的发言速度 + 水群排行（总速度、每人条/分钟、占比）<br>时间支持 30m / 30分 / 三十分钟 / 1h / 一小时，不带参数默认 30 分钟</span>
+      </div>
     </div>
 
     <div class="group{% if not features.get('user_stats', True) %} off{% endif %}">

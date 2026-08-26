@@ -18,6 +18,7 @@
     ptest/phrase_stats.png      （特定发言统计 · 饼图+用户排行）
     ptest/help_sample.png       （帮助菜单 · 指令列表）
     ptest/trend_sample.png      （发言趋势 · 近7天双轴折线图）
+    ptest/speed_sample.png      （发言速度 · 最近N分钟水群排行）
 
 依赖：pip install -r requirements.txt 且执行过 playwright install chromium
 """
@@ -245,6 +246,33 @@ async def main() -> int:
             today_pct=pcts[-1],
         )
         save_png(b64, "trend_sample.png")
+
+        # ---- 发言速度 ----
+        print("\n== 渲染发言速度样例 ==")
+        speed_rows = [
+            (1, 10001, "星野绽放", 45, 1.5, 30.0),
+            (2, 10002, "月下旅人", 38, 1.3, 25.3),
+            (3, 10003, "初音未来", 30, 1.0, 20.0),
+            (4, 10004, "樱井桃华", 18, 0.6, 12.0),
+            (5, 10005, "雪之下", 19, 0.6, 12.7),
+        ]
+        speed_users: List[dict] = []
+        for rank, uid, nick, count, rate, pct in speed_rows:
+            avatar = await fetch_avatar(session, uid)
+            if not avatar:
+                avatar = placeholder_avatar(nick)
+            speed_users.append({
+                "rank": rank, "user_id": str(uid), "nickname": nick,
+                "avatar_b64": avatar, "count": count, "rate": rate, "percent": pct,
+            })
+        b64 = await renderer.render_speed(
+            window_label="30 分钟",
+            top_users=speed_users,
+            total=150,
+            speed=5.0,
+            active_users=23,
+        )
+        save_png(b64, "speed_sample.png")
 
         print("\n全部完成 ✅  打开 ptest/ 查看图片")
         return 0

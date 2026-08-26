@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Noto Sans SC", "Noto Sans CJK SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: linear-gradient(135deg, #FFB7C5 0%, #C8A2C8 100%);
+    padding: 28px;
+    min-height: 100vh;
+  }
+  .card {
+    width: 680px;
+    margin: 0 auto;
+    background: rgba(255,255,255,0.92);
+    border-radius: 16px;
+    padding: 30px 26px 22px;
+    box-shadow: 0 12px 32px rgba(106,76,147,0.22);
+    border: 1px solid rgba(255,255,255,0.6);
+  }
+  .header { text-align: center; margin-bottom: 18px; }
+  .title {
+    font-size: 15px;
+    color: #8e7cc3;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .window-box {
+    display: inline-block;
+    padding: 8px 28px;
+    background: linear-gradient(135deg, #FFB7C5, #C8A2C8);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    box-shadow: 0 4px 12px rgba(200,162,200,0.35);
+  }
+  .window-text {
+    font-size: 26px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 2px;
+  }
+
+  .summary { display: flex; gap: 10px; margin-bottom: 18px; }
+  .s-item {
+    flex: 1;
+    background: rgba(255,255,255,0.6);
+    border-radius: 12px;
+    padding: 12px 6px;
+    text-align: center;
+    border: 1px solid rgba(200,162,200,0.25);
+  }
+  .s-label { font-size: 11px; color: #8e7cc3; margin-bottom: 5px; }
+  .s-value { font-size: 19px; font-weight: 700; color: #6A4C93; }
+  .s-value.acc { color: #E74C3C; }
+  .s-sub { font-size: 10px; color: #aaa; margin-top: 3px; }
+
+  .section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #6A4C93;
+    margin-bottom: 10px;
+    padding-left: 4px;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    margin: 5px 0 2px 0;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.55);
+  }
+  .row.gold   { background: linear-gradient(90deg, #FFF3B0, #FFE17A); }
+  .row.silver { background: linear-gradient(90deg, #F2F2F2, #DCDCDC); }
+  .row.bronze { background: linear-gradient(90deg, #FFE0CC, #F5B78A); }
+  .rank {
+    width: 36px;
+    font-size: 20px;
+    font-weight: 700;
+    color: #6A4C93;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .avatar {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    margin: 0 12px;
+    object-fit: cover;
+    border: 2px solid #fff;
+    background: #eee;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  }
+  .avatar-ph { width: 42px; height: 42px; border-radius: 50%; margin: 0 12px; background: #eee; flex-shrink: 0; }
+  .name {
+    flex: 1;
+    font-size: 15px;
+    color: #3a3a3a;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+  .count {
+    font-size: 15px;
+    font-weight: 700;
+    color: #E74C3C;
+    margin: 0 10px;
+    white-space: nowrap;
+  }
+  .rate {
+    font-size: 12px;
+    color: #6A4C93;
+    width: 64px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .percent {
+    font-size: 12px;
+    color: #888;
+    width: 52px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .bar-wrap {
+    height: 6px;
+    background: rgba(106,76,147,0.12);
+    border-radius: 3px;
+    margin: 0 16px 4px 16px;
+    overflow: hidden;
+  }
+  .bar {
+    height: 100%;
+    background: linear-gradient(90deg, #FFB7C5, #C8A2C8);
+    border-radius: 3px;
+    min-width: 3px;
+  }
+  .footer { text-align: center; font-size: 12px; color: #b39ddb; margin-top: 14px; }
+  .disclaimer { text-align: center; font-size: 11px; color: #b0b0b0; margin-top: 6px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="title">⚡ 最近发言速度</div>
+      <div class="window-box"><span class="window-text">最近 {{ window_label }}</span></div>
+    </div>
+
+    <div class="summary">
+      <div class="s-item">
+        <div class="s-label">群总速度</div>
+        <div class="s-value acc">{{ speed }}</div>
+        <div class="s-sub">条 / 分钟</div>
+      </div>
+      <div class="s-item">
+        <div class="s-label">窗口内总发言</div>
+        <div class="s-value">{{ total }}</div>
+        <div class="s-sub">条</div>
+      </div>
+      <div class="s-item">
+        <div class="s-label">参与水群</div>
+        <div class="s-value">{{ active_users }}</div>
+        <div class="s-sub">人</div>
+      </div>
+      <div class="s-item">
+        <div class="s-label">水群王</div>
+        <div class="s-value">{{ users[0].nickname if users else '-' }}</div>
+        <div class="s-sub">{{ users[0].count if users else 0 }} 条</div>
+      </div>
+    </div>
+
+    <div class="section-title">🚀 谁在高速水群</div>
+    {% for u in users %}
+    <div class="row {% if u.rank == 1 %}gold{% elif u.rank == 2 %}silver{% elif u.rank == 3 %}bronze{% endif %}">
+      <div class="rank">{{ u.rank }}</div>
+      {% if u.avatar_b64 %}
+      <img class="avatar" src="{{ u.avatar_b64 }}">
+      {% else %}
+      <div class="avatar-ph"></div>
+      {% endif %}
+      <div class="name">{{ u.nickname }}</div>
+      <div class="count">{{ u.count }} 条</div>
+      <div class="rate">{{ u.rate }} 条/分</div>
+      <div class="percent">{{ u.percent }}%</div>
+    </div>
+    <div class="bar-wrap"><div class="bar" style="width: {{ u.percent }}%;"></div></div>
+    {% endfor %}
+
+    <div class="footer">🌸 Yuki · 发言速度（仅统计运行期间的消息）</div>
+    <div class="disclaimer">⚠️ 重启后窗口数据从头累计，最长支持 12 小时</div>
+  </div>
+</body>
+</html>

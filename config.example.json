@@ -6,6 +6,7 @@
     "phrase_stats": true,
     "sign": true,
     "repeat": true,
-    "help": true
+    "help": true,
+    "speed": true
   }
 }

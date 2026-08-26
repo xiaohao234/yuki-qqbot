@@ -12,7 +12,8 @@
     "phrase_stats": true, // 特定发言统计（/统计发言 /删除统计 /昨日数据 /<短语>）
     "sign": true,         // 签到运势（/签到 /运势）
     "repeat": true,       // 三人复读
-    "help": true          // 帮助菜单（/yukihelp //help）
+    "help": true,         // 帮助菜单（/yukihelp //help）
+    "speed": true         // 发言速度（/发言速 /水群速 /水群）
   }
 }
 
@@ -38,6 +39,7 @@ DEFAULT_FEATURES: Dict[str, bool] = {
     "sign": True,          # 签到运势
     "repeat": True,        # 三人复读
     "help": True,          # 帮助菜单
+    "speed": True,         # 发言速度（/发言速 /水群速 /水群）
 }
 
 

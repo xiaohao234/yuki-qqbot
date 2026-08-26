@@ -125,6 +125,29 @@ class Renderer:
         )
         return await self.render_html_to_png_b64(html)
 
+    async def render_speed(
+        self,
+        window_label: str,
+        top_users: List[dict],
+        total: int,
+        speed: float,
+        active_users: int,
+    ) -> str:
+        """渲染发言速度图片（时间窗口内的速度概览 + 水群 Top10）。
+
+        top_users 元素：{rank, user_id, nickname, avatar_b64, count, rate, percent}
+        speed 为群总速度（条/分钟）；active_users 为窗口内发过言的人数。
+        """
+        html = self._render(
+            "speed.html",
+            window_label=window_label,
+            users=top_users,
+            total=total,
+            speed=speed,
+            active_users=active_users,
+        )
+        return await self.render_html_to_png_b64(html)
+
     async def render_fortune(
         self,
         nickname: str,

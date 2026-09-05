@@ -794,7 +794,14 @@ class MessageHandler:
         gkey, ukey = str(group_id), str(user_id)
 
         # 找出消息中包含哪些追踪短语
-        matched = [p for p in self._tracked_phrases if p in raw_message]
+        # 最长匹配优先 + 占位替换：命中「不赖」后其位置被占位符覆盖，
+        # 子串「赖」不会在同一位置重复计数；「不赖赖」中的独立「赖」仍会正常统计
+        matched: List[str] = []
+        remaining = raw_message
+        for p in sorted(self._tracked_phrases, key=len, reverse=True):
+            if p and p in remaining:
+                matched.append(p)
+                remaining = remaining.replace(p, "\x00" * len(p))
         if not matched:
             return
 

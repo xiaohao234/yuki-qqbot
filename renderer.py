@@ -29,8 +29,13 @@ class Renderer:
         tpl = self.env.get_template(name)
         return tpl.render(**context)
 
-    async def render_html_to_png_b64(self, html: str, width: int = 720) -> str:
-        """把完整 HTML 字符串渲染为整页 PNG，返回 Base64 字符串。"""
+    async def render_html_to_png_b64(self, html: str, width: int = 760) -> str:
+        """把完整 HTML 字符串渲染为整页 PNG，返回 Base64 字符串。
+
+        width 默认 760：模板 card 宽 680 + body 左右 padding 28*2 = 736，
+        视口必须 ≥736 才能让 margin:0 auto 生效（卡片水平居中），
+        760 时左右各留 40px 对称留白。720 会导致 680px 卡片溢出、内容右偏 8px。
+        """
         page = await self.browser.new_page(
             viewport={"width": width, "height": 800},
             device_scale_factor=2,  # 2x 提升清晰度

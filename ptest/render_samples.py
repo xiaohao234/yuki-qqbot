@@ -46,7 +46,7 @@ from renderer import Renderer  # noqa: E402
 def placeholder_avatar(name: str) -> str:
     """SVG 占位头像（昵称首字 + 渐变底色），data URI 形式。"""
     ch = name[0] if name else "?"
-    palette = ["#FFB7C5", "#C8A2C8", "#A8D8EA", "#FFDAC1", "#B5EAD7", "#FF9AA2"]
+    palette = ["#A8D4F2", "#6FA6D6", "#BFDFF2", "#9CCDF2", "#B5EAD7", "#C3E0F7"]
     color = palette[abs(hash(name)) % len(palette)]
     svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">'

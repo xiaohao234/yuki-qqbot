@@ -6,7 +6,7 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: "Noto Sans SC", "Noto Sans CJK SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Microsoft YaHei", "PingFang SC", sans-serif;
-    background: linear-gradient(135deg, #FFC9DE 0%, #9DC9F0 100%);
+    background: linear-gradient(135deg, #DCEFFC 0%, #AFCFEA 100%);
     padding: 28px;
     min-height: 100vh;
   }
@@ -16,17 +16,17 @@
     background: rgba(255,255,255,0.9);
     border-radius: 16px;
     padding: 30px 26px;
-    box-shadow: 0 12px 32px rgba(62,124,177,0.25);
+    box-shadow: 0 12px 32px rgba(120,160,200,0.25);
     border: 1px solid rgba(255,255,255,0.65);
   }
   .header { text-align: center; margin-bottom: 22px; }
   .title {
     font-size: 30px;
     font-weight: 700;
-    color: #3E7CB1;
+    color: #4A85BC;
     letter-spacing: 2px;
   }
-  .subtitle { font-size: 14px; color: #7FA8D9; margin-top: 6px; }
+  .subtitle { font-size: 14px; color: #93BCE0; margin-top: 6px; }
   .row {
     display: flex;
     align-items: center;
@@ -36,19 +36,19 @@
     background: rgba(255,255,255,0.6);
     transition: transform .2s;
   }
-  .row.gold   { background: linear-gradient(90deg, #FFE3EE, #FFC9DE); box-shadow: 0 4px 14px rgba(255,143,171,0.45); }
-  .row.silver { background: linear-gradient(90deg, #EAF4FF, #D6E9FA); box-shadow: 0 4px 12px rgba(111,183,232,0.4); }
+  .row.gold   { background: linear-gradient(90deg, #FFF3B0, #FFE17A); box-shadow: 0 4px 14px rgba(255,200,50,0.45); }
+  .row.silver { background: linear-gradient(90deg, #EAF4FF, #D6E9FA); box-shadow: 0 4px 12px rgba(140,190,235,0.4); }
   .row.bronze { background: linear-gradient(90deg, #FFF6E8, #FFE4C7); box-shadow: 0 4px 12px rgba(240,178,107,0.35); }
   .rank {
     width: 40px;
     font-size: 22px;
     font-weight: 700;
-    color: #3E7CB1;
+    color: #4A85BC;
     text-align: center;
     flex-shrink: 0;
   }
-  .row.gold .rank   { color: #FF6B9D; }
-  .row.silver .rank { color: #4A90D9; }
+  .row.gold .rank   { color: #DFA32C; }
+  .row.silver .rank { color: #6FA6D6; }
   .row.bronze .rank { color: #E8A25C; }
   .avatar {
     width: 48px; height: 48px;
@@ -73,33 +73,33 @@
   .count {
     font-size: 16px;
     font-weight: 700;
-    color: #FF6B9D;
+    color: #E74C3C;
     margin: 0 10px;
     white-space: nowrap;
   }
   .percent {
     font-size: 13px;
-    color: #7FA8D9;
+    color: #93BCE0;
     width: 64px;
     text-align: right;
     white-space: nowrap;
   }
-  .total { font-size: 14px; color: #3E7CB1; margin-top: 10px; }
-  .total b { font-size: 19px; color: #FF6B9D; font-weight: 700; }
+  .total { font-size: 14px; color: #4A85BC; margin-top: 10px; }
+  .total b { font-size: 19px; color: #E74C3C; font-weight: 700; }
   .bar-wrap {
     height: 8px;
-    background: rgba(62,124,177,0.12);
+    background: rgba(120,160,200,0.12);
     border-radius: 4px;
     margin: 0 16px 6px 16px;
     overflow: hidden;
   }
   .bar {
     height: 100%;
-    background: linear-gradient(90deg, #FF9EBB, #6FB7E8);
+    background: linear-gradient(90deg, #A8D4F2, #6FA6D6);
     border-radius: 4px;
     min-width: 3px;
   }
-  .footer { text-align: center; font-size: 12px; color: #7FA8D9; margin-top: 16px; }
+  .footer { text-align: center; font-size: 12px; color: #93BCE0; margin-top: 16px; }
 </style>
 </head>
 <body>
@@ -123,7 +123,7 @@
     </div>
     <div class="bar-wrap"><div class="bar" style="width: {{ u.percent }}%;"></div></div>
     {% endfor %}
-    <div class="footer">🌸 Yuki · 蓝粉新配色样例 · 数据仅供参考</div>
+    <div class="footer">🌸 Yuki · 浅蓝新配色样例 · 数据仅供参考</div>
   </div>
 </body>
 </html>

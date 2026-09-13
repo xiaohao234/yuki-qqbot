@@ -981,7 +981,7 @@ class MessageHandler:
                         avatar_b64=avatar_b64,
                         date_str=today,
                         fortune=stored_fortune["fortune"],
-                        fortune_color=stored_fortune.get("fortune_color", "#8e7cc3"),
+                        fortune_color=stored_fortune.get("fortune_color", "#6FA6D6"),
                         yi=stored_fortune.get("yi", []),
                         ji=stored_fortune.get("ji", []),
                         lucky_number=stored_fortune.get("lucky_number", 1),

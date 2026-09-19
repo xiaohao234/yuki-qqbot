@@ -10,7 +10,7 @@ ExecStart=/opt/yuki/.venv/bin/python /opt/yuki/main.py
 Restart=on-failure
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
-# 管理员 QQ（使用 /统计发言 /删除统计 需设置；把 0 换成你的 QQ 号）
+# 管理员 QQ（#yukireboot / #log / /统计发言 等指令需设置；支持多个，逗号分隔，如 123,456；0=禁用）
 Environment=BOT_ADMIN_QQ=0
 # 如 NapCat 在另一台机器，取消下行注释并在宝塔放行 8082：
 # Environment=BOT_HOST=0.0.0.0

@@ -18,6 +18,8 @@
   最近日志（默认 15 行，最大 200）。日志源在 config.json 的 "log" 块配置：
   systemd 服务走 journalctl；1panel/宝塔 supervisor 守护进程直接读日志文件（tail）；
   auto 模式优先读文件、文件不可用回落 journalctl。
+- 管理员可配置多个：环境变量 BOT_ADMIN_QQ 逗号分隔（如 123,456），
+  "0" 或留空 = 禁用全部管理员指令。
 - 发言统计每天 0 点自动刷新（按日期隔离），数据保留 7 天（今天 + 前 6 天），
   超出 7 天的旧数据在每次写入时惰性清理。
 - @bot 已下线：@ 消息交给 astrbot 处理，本程序不再回复 @。
@@ -185,9 +187,26 @@ def _fmt_window(sec: int) -> str:
 # 数据保留天数（今天 + 前 6 天 = 7 天），/昨日发言 /昨日数据 等原有查询不受影响
 STATS_RETENTION_DAYS = 7
 
-# 管理员 QQ（最高权限，可使用 /统计发言 /删除统计）
-# 默认 "0"（不启用管理员指令）；部署时通过环境变量 BOT_ADMIN_QQ 注入真实 QQ 号
-ADMIN_QQ = os.environ.get("BOT_ADMIN_QQ", "0")
+# ---------- 管理员（可配置多个）----------
+def _parse_admin_qqs(raw: str) -> frozenset:
+    """解析 BOT_ADMIN_QQ 为管理员 QQ 集合（支持逗号/空格分隔多个，中英文逗号均可）。
+
+    "0"、空串、非数字项自动忽略；解析结果为空 = 管理员指令全部禁用。
+    """
+    if not raw:
+        return frozenset()
+    vals = set()
+    for chunk in raw.replace("，", ",").split(","):
+        for item in chunk.split():
+            if item and item != "0" and item.isdigit():
+                vals.add(item)
+    return frozenset(vals)
+
+
+# 管理员 QQ 集合（最高权限，可用 #yukireboot / #log / /统计发言 / /stop 等）
+# 默认 "0"（不启用管理员指令）；部署时通过环境变量 BOT_ADMIN_QQ 注入，
+# 支持多个：BOT_ADMIN_QQ=123456,234567
+ADMIN_QQS = _parse_admin_qqs(os.environ.get("BOT_ADMIN_QQ", "0"))
 
 # ---------- 管理员系统指令：#yukireboot / #log ----------
 
@@ -891,7 +910,7 @@ class MessageHandler:
     async def _cmd_track_phrase(self, group_id: int, user_id: int, phrase: str) -> None:
         """管理员：开启特定发言统计（对所有群生效）。"""
         ws = self.ob.ws
-        if str(user_id) != ADMIN_QQ:
+        if str(user_id) not in ADMIN_QQS:
             await onebot.send_group_text(ws, group_id, "只有管理员才能使用此指令~")
             return
         if not phrase:
@@ -913,7 +932,7 @@ class MessageHandler:
     async def _cmd_untrack_phrase(self, group_id: int, user_id: int, phrase: str) -> None:
         """管理员：停止统计并删除该短语所有数据。"""
         ws = self.ob.ws
-        if str(user_id) != ADMIN_QQ:
+        if str(user_id) not in ADMIN_QQS:
             await onebot.send_group_text(ws, group_id, "只有管理员才能使用此指令~")
             return
         if not phrase:
@@ -1097,7 +1116,7 @@ class MessageHandler:
         带参数 → 切换指定功能（支持中文别名或英文 key，如：/stop 签到、/start repeat）。
         """
         ws = self.ob.ws
-        if str(user_id) != ADMIN_QQ:
+        if str(user_id) not in ADMIN_QQS:
             await onebot.send_group_text(ws, group_id, "只有管理员才能使用此指令~")
             return
         try:
@@ -1156,9 +1175,13 @@ class MessageHandler:
             os.replace(tmp, self.config_path)  # 原子写，避免半截文件
 
     def log_features(self) -> None:
-        """启动时输出各功能开关状态（由 main.py 在启动日志中调用）。"""
+        """启动时输出各功能开关与管理员配置状态（由 main.py 在启动日志中调用）。"""
         parts = [f"{name}={'on' if flag else 'off'}" for name, flag in self.features.items()]
         logger.info("功能开关：%s", " ".join(parts))
+        if ADMIN_QQS:
+            logger.info("管理员：%d 人（%s）", len(ADMIN_QQS), "、".join(sorted(ADMIN_QQS)))
+        else:
+            logger.warning("管理员未配置（BOT_ADMIN_QQ=0 或为空），管理员指令全部禁用")
 
     # ---------- 管理员系统指令：#yukireboot / #log ----------
     async def _cmd_reboot(self, group_id: int, user_id: int) -> None:
@@ -1169,7 +1192,7 @@ class MessageHandler:
         宝塔/1panel 进程守护均兼容，重启期间 NapCat 会自动重连。
         """
         ws = self.ob.ws
-        if str(user_id) != ADMIN_QQ:
+        if str(user_id) not in ADMIN_QQS:
             await onebot.send_group_text(ws, group_id, "只有管理员才能使用此指令~")
             return
         scope = f"{group_id}_{user_id}"
@@ -1236,7 +1259,7 @@ class MessageHandler:
         supervisor/文件日志用 file 模式（tail），systemd 服务用 journal 模式（journalctl）。
         """
         ws = self.ob.ws
-        if str(user_id) != ADMIN_QQ:
+        if str(user_id) not in ADMIN_QQS:
             await onebot.send_group_text(ws, group_id, "只有管理员才能使用此指令~")
             return
         tokens = arg.split()

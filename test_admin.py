@@ -381,6 +381,29 @@ async def amain() -> int:
     step("help 功能停用后菜单指令静默", fake_r2.calls == [] and not reply_texts(hB),
          f"calls={fake_r2.calls} 回复={reply_texts(hB)}")
 
+    # ---------- 多管理员 ----------
+    print("\n== 多管理员配置 ==")
+    os.environ["BOT_ADMIN_QQ"] = "1001,2002 3003，非数字,0"
+    handler_mod = importlib.reload(handler_mod)
+    hM = handler_mod.MessageHandler(FakeOB(), renderer=None, http_session=None, data_dir=_TMP_DATA)
+    step("多管理员解析（逗号/空格/中文逗号，过滤非数字与 0）",
+         handler_mod.ADMIN_QQS == frozenset({"1001", "2002", "3003"}),
+         f"实际 {sorted(handler_mod.ADMIN_QQS)}")
+    await send(hM, 1001, "#yukireboot")
+    t = reply_texts(hM)[-1]
+    step("管理员1 可触发重启确认", "确认要重启" in t, f"实际回复 {t[:30]}")
+    hM._pending_reboot = None
+    await send(hM, 2002, "#yukireboot")
+    t = reply_texts(hM)[-1]
+    step("管理员2 可触发重启确认", "确认要重启" in t, f"实际回复 {t[:30]}")
+    hM._pending_reboot = None
+    await send(hM, 3003, "#log astr")
+    t = reply_texts(hM)[-1]
+    step("管理员3 可用 #log", "用法：#log" in t or "📋" in t or "获取日志" in t, f"实际回复 {t[:30]}")
+    await send(hM, 3002, "#yukireboot")
+    t = reply_texts(hM)[-1]
+    step("非管理员被拒绝", t == "只有管理员才能使用此指令~", f"实际回复 {t}")
+
     # ---------- ADMIN_QQ 未配置 ----------
     print("\n== BOT_ADMIN_QQ 未配置（=0）时全部拒绝 ==")
     os.environ["BOT_ADMIN_QQ"] = "0"

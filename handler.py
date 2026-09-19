@@ -8,6 +8,8 @@
 - /统计发言 <短语>（管理员）→ 开启特定发言统计（对所有群生效）。
 - /删除统计 <短语>（管理员）→ 停止统计并删除该短语所有数据。
 - /<特定发言> → 生成该短语今日统计图片（出现次数+用户排行+占群饼图）。
+  短语与消息匹配前都会做 CQ 归一化（cqtext.py）：QQ 表情/商城大表情 → [表情:xxx]
+  短标记，因此支持「统计某个表情」，历史遗留的整段 raw JSON 短语启动时自动迁移。
 - /昨日数据 <特定发言> → 生成该短语昨日统计图片。
 - /签到 / /运势 → 每日签到 + 运势图片。
 - /yukihelp / //help → 用户指令菜单图片；/yukihelp a|admin → 管理员指令菜单图片。
@@ -45,6 +47,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import aiofiles
 import aiohttp
 
+import cqtext
 import onebot
 from features import DEFAULT_FEATURES, config_path, load_features
 from repeat import RepeatDetector
@@ -296,13 +299,27 @@ class MessageHandler:
 
     # ---------- 追踪短语列表（同步加载，仅在 init 时调用）----------
     def _load_tracked_phrases_sync(self) -> List[str]:
-        """启动时同步加载追踪短语列表到内存。"""
+        """启动时同步加载追踪短语列表到内存。
+
+        加载时逐条做 CQ 归一化并去重：历史数据里若存过商城大表情的整段
+        raw JSON（旧版 bug），会自动迁移为 [表情:xxx] 短标记。
+        """
         if not os.path.exists(self.tracked_path):
             return []
         try:
             with open(self.tracked_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                return data if isinstance(data, list) else []
+                if not isinstance(data, list):
+                    return []
+                seen, out = set(), []
+                for p in data:
+                    if not isinstance(p, str):
+                        continue
+                    p = cqtext.normalize(p)
+                    if p and p not in seen:
+                        seen.add(p)
+                        out.append(p)
+                return out
         except (json.JSONDecodeError, IOError):
             return []
 
@@ -388,7 +405,7 @@ class MessageHandler:
                 return
             # /昨日数据 <短语> → 昨日特定发言统计
             if raw.startswith(COMMAND_YESTERDAY_PHRASE + " "):
-                phrase = raw[len(COMMAND_YESTERDAY_PHRASE) + 1:].strip()
+                phrase = cqtext.normalize(raw[len(COMMAND_YESTERDAY_PHRASE) + 1:]).strip()
                 await self._cmd_phrase_stats(group_id, phrase, is_yesterday=True)
                 return
         # /发言速 /水群速 /水群 [时间] → 最近一段时间的发言速度排行
@@ -439,13 +456,14 @@ class MessageHandler:
             await self._cmd_sign(group_id, user_id, nickname)
             return
         # /<追踪短语> → 今日特定发言统计（放在所有指令之后，避免和 /签到 等冲突）
+        # 归一化后再比对：/表情 形式的追踪短语才能命中
         if self.features.get("phrase_stats", True) and raw.startswith("/") and len(raw) > 1:
-            phrase = raw[1:]
+            phrase = cqtext.normalize(raw[1:]).strip()
             if phrase in self._tracked_phrases:
                 await self._cmd_phrase_stats(group_id, phrase, is_yesterday=False)
                 return
 
-        # 3. 三人复读（仅纯文本参与；命中后本波次只发一次）
+        # 3. 三人复读（纯文本 + QQ 表情参与；图片/语音/@ 等不参与；命中后本波次只发一次）
         if not self.features.get("repeat", True):
             return
         repeat_text = self._repeat.check_and_trigger(group_id, user_id, self_id, raw)
@@ -883,10 +901,12 @@ class MessageHandler:
         gkey, ukey = str(group_id), str(user_id)
 
         # 找出消息中包含哪些追踪短语
+        # 匹配前先做 CQ 归一化：商城大表情等长 CQ 码 → [表情:xxx] 短标记，
+        # 这样「/统计发言 + 表情」追踪的短语才能命中后续的表情消息
         # 最长匹配优先 + 占位替换：命中「不赖」后其位置被占位符覆盖，
         # 子串「赖」不会在同一位置重复计数；「不赖赖」中的独立「赖」仍会正常统计
         matched: List[str] = []
-        remaining = raw_message
+        remaining = cqtext.normalize(raw_message)
         for p in sorted(self._tracked_phrases, key=len, reverse=True):
             if p and p in remaining:
                 matched.append(p)
@@ -916,6 +936,8 @@ class MessageHandler:
         if not phrase:
             await onebot.send_group_text(ws, group_id, "请输入要统计的发言，例如：/统计发言 不赖")
             return
+        # CQ 归一化：/统计发言 + QQ 表情 → 存 [表情:xxx] 短标记，而不是整段 raw JSON
+        phrase = cqtext.normalize(phrase).strip()
         try:
             async with self._tracked_lock:
                 if phrase not in self._tracked_phrases:
@@ -938,6 +960,7 @@ class MessageHandler:
         if not phrase:
             await onebot.send_group_text(ws, group_id, "请输入要删除的统计，例如：/删除统计 不赖")
             return
+        phrase = cqtext.normalize(phrase).strip()  # 与追踪时同样归一化，才能对得上
         try:
             async with self._tracked_lock:
                 if phrase in self._tracked_phrases:

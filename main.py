@@ -44,7 +44,7 @@ TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 
 # 全局状态
 ob_conn = onebot.OneBotConnection()
-handler: MessageHandler  # type: ignore
+handler = None  # MessageHandler，在 _on_startup 中创建（NapCat 连入前必然已就绪）
 _renderer: Renderer
 _http_session: aiohttp.ClientSession
 _playwright = None
@@ -103,6 +103,13 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
     peer = request.remote
     logger.info("NapCat 已连接：%s", peer)
     ob_conn.set_connection(ws)
+
+    # 若此前发生过 #yukireboot 重启，向触发重启的群发送"启动成功"通知（仅一次）
+    if handler is not None:
+        try:
+            await handler.maybe_send_startup_notice(ws)
+        except Exception as e:
+            logger.exception("发送启动成功通知失败: %s", e)
 
     try:
         async for msg in ws:

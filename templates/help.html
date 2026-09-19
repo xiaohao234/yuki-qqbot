@@ -134,10 +134,11 @@
 <body>
   <div class="card">
     <div class="header">
-      <div class="brand"><span class="brand-text">🌸 Yuki 指令手册</span></div>
-      <div class="subtitle">— 你的二次元群聊小伙伴 —</div>
+      <div class="brand"><span class="brand-text">{% if admin %}🔧 Yuki 管理员手册{% else %}🌸 Yuki 指令手册{% endif %}</span></div>
+      <div class="subtitle">{% if admin %}— 管理员专用指令 —{% else %}— 你的二次元群聊小伙伴 —{% endif %}</div>
     </div>
 
+    {% if not admin %}
     <div class="group{% if not features.get('sign', True) %} off{% endif %}">
       <div class="group-title">🌸 基础互动{% if not features.get('sign', True) %}<span class="off-badge">已停用</span>{% endif %}</div>
       <div class="cmd">
@@ -150,10 +151,12 @@
       </div>
       <div class="cmd">
         <span class="cmd-code">/yukihelp 或 //help</span>
-        <span class="cmd-desc">显示本帮助菜单（就是你现在看到的这张图~）</span>
+        <span class="cmd-desc">显示本用户帮助菜单（就是你现在看到的这张图~）<br>管理员发送 /yukihelp a 可查看管理员指令手册</span>
       </div>
     </div>
+    {% endif %}
 
+    {% if not admin %}
     <div class="group{% if not features.get('stats', True) %} off{% endif %}">
       <div class="group-title">📊 发言排行{% if not features.get('stats', True) %}<span class="off-badge">已停用</span>{% endif %}</div>
       <div class="cmd">
@@ -169,7 +172,9 @@
         <span class="cmd-desc">最近一段时间的发言速度 + 水群排行（总速度、每人条/分钟、占比）<br>时间支持 30m / 30分 / 三十分钟 / 1h / 一小时，不带参数默认 30 分钟</span>
       </div>
     </div>
+    {% endif %}
 
+    {% if not admin %}
     <div class="group{% if not features.get('user_stats', True) %} off{% endif %}">
       <div class="group-title">👤 个人发言查询{% if not features.get('user_stats', True) %}<span class="off-badge">已停用</span>{% endif %}</div>
       <div class="cmd">
@@ -185,7 +190,9 @@
         <span class="cmd-desc">近 7 天发言趋势折线图（每日发言数 + 占群比例 + 峰值/日均/占比汇总）<br>不带参数查自己；&lt;目标&gt; 支持：QQ号 / @用户 / 群昵称</span>
       </div>
     </div>
+    {% endif %}
 
+    {% if not admin %}
     <div class="group{% if not features.get('phrase_stats', True) %} off{% endif %}">
       <div class="group-title">🎯 特定发言统计{% if not features.get('phrase_stats', True) %}<span class="off-badge">已停用</span>{% endif %}</div>
       <div class="cmd">
@@ -197,7 +204,9 @@
         <span class="cmd-desc">生成该短语昨日统计图</span>
       </div>
     </div>
+    {% endif %}
 
+    {% if admin %}
     <div class="group admin{% if not features.get('phrase_stats', True) %} off{% endif %}">
       <div class="group-title">🔧 管理员指令（仅管理员可用）{% if not features.get('phrase_stats', True) %}<span class="off-badge">已停用</span>{% endif %}</div>
       <div class="cmd">
@@ -216,8 +225,18 @@
         <span class="cmd-code">/start [&lt;功能&gt;]</span>
         <span class="cmd-desc">启用已停用的功能（立即生效）；停用帮助菜单后可用 /start help 恢复</span>
       </div>
+      <div class="cmd">
+        <span class="cmd-code">#yukireboot</span>
+        <span class="cmd-desc">重启 Yuki 进程：<b>30 秒内再次发送</b>以二次确认；重启完成 NapCat 重连后自动向本群发送"启动成功"通知</span>
+      </div>
+      <div class="cmd">
+        <span class="cmd-code">#log &lt;a|astr|astrbot|n|nc|napcat&gt; [行数]</span>
+        <span class="cmd-desc">输出 astrbot / napcat 最近日志，方便诊断（默认 15 行，最大 200）<br>日志源在 config.json 的 log 块配置：supervisor 文件日志用 file 模式，systemd 服务用 journal 模式</span>
+      </div>
     </div>
+    {% endif %}
 
+    {% if not admin %}
     <div class="group passive">
       <div class="group-title">✨ 被动功能（自动触发，无需输入）</div>
       <div class="cmd{% if not features.get('repeat', True) %} off{% endif %}">
@@ -233,11 +252,12 @@
         <span class="cmd-desc">AI 聊天已交给 astrbot 处理，@我即可触发对话~</span>
       </div>
     </div>
+    {% endif %}
 
     <div class="footer">
       <div class="footer-note">
         📅 发言统计 &amp; 特定发言统计每天 0 点自动刷新，数据保留 7 天（今天 + 前 6 天）<br>
-        🌸 请按上述格式发送指令（区分大小写）
+        🌸 请按上述格式发送指令（区分大小写）{% if not admin %}<br>🔧 管理员指令手册：发送 /yukihelp a 查看{% endif %}
       </div>
       <div class="disclaimer">⚠️ 运势结果仅供参考，请勿迷信哦~</div>
     </div>

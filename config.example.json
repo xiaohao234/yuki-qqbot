@@ -8,5 +8,17 @@
     "repeat": true,
     "help": true,
     "speed": true
+  },
+  "_说明": "#log 指令的日志源配置见下方 log 块。mode=file 直接读日志文件（1panel/宝塔 supervisor 守护进程用这个）；mode=journal 用 journalctl 读 systemd 服务日志；mode=auto 优先读文件、不存在时回落 journalctl",
+  "log": {
+    "mode": "file",
+    "files": {
+      "astrbot": "/opt/1panel/data/supervisor/log/astrbot-stdout.log",
+      "napcat": "/opt/1panel/data/supervisor/log/napcat-stdout.log"
+    },
+    "units": {
+      "astrbot": "astrbot",
+      "napcat": "napcat"
+    }
   }
 }

@@ -10,8 +10,14 @@
 - /<特定发言> → 生成该短语今日统计图片（出现次数+用户排行+占群饼图）。
 - /昨日数据 <特定发言> → 生成该短语昨日统计图片。
 - /签到 / /运势 → 每日签到 + 运势图片。
-- /yukihelp / //help → 帮助菜单图片（含全部指令介绍）。
+- /yukihelp / //help → 用户指令菜单图片；/yukihelp a|admin → 管理员指令菜单图片。
 - /发言趋势 / /趋势 [QQ号|@用户|昵称] → 近 7 天发言趋势折线图（无参数查自己）。
+- #yukireboot（管理员）→ 重启 Yuki 进程（30 秒内发送第二次以确认）；
+  重启完成、NapCat 重连后自动向触发的群发送"启动成功"通知。
+- #log <a|astr|astrbot|n|nc|napcat> [行数]（管理员）→ 输出 astrbot / napcat
+  最近日志（默认 15 行，最大 200）。日志源在 config.json 的 "log" 块配置：
+  systemd 服务走 journalctl；1panel/宝塔 supervisor 守护进程直接读日志文件（tail）；
+  auto 模式优先读文件、文件不可用回落 journalctl。
 - 发言统计每天 0 点自动刷新（按日期隔离），数据保留 7 天（今天 + 前 6 天），
   超出 7 天的旧数据在每次写入时惰性清理。
 - @bot 已下线：@ 消息交给 astrbot 处理，本程序不再回复 @。
@@ -28,6 +34,7 @@ import logging
 import os
 import random
 import re
+import sys
 import time
 from collections import deque
 from datetime import date, datetime, timedelta
@@ -182,6 +189,41 @@ STATS_RETENTION_DAYS = 7
 # 默认 "0"（不启用管理员指令）；部署时通过环境变量 BOT_ADMIN_QQ 注入真实 QQ 号
 ADMIN_QQ = os.environ.get("BOT_ADMIN_QQ", "0")
 
+# ---------- 管理员系统指令：#yukireboot / #log ----------
+
+COMMAND_REBOOT = "#yukireboot"
+COMMAND_LOG = "#log"
+
+# 重启二次确认的有效窗口（秒）
+REBOOT_CONFIRM_WINDOW_SEC = 30
+
+# #log 行数：缺省 / 上限；输出文本字符上限（QQ 消息过长会被平台截断）
+LOG_DEFAULT_LINES = 15
+LOG_MAX_LINES = 200
+LOG_MAX_CHARS = 3800
+# 日志子进程（journalctl / tail）超时（秒），超时杀掉并回收，避免僵尸进程
+LOG_TIMEOUT_SEC = 10
+
+# #log 日志源模式（config.json 的 "log" 块）：
+#   journal → journalctl 读 systemd 服务日志（log.units 配置服务单元名）
+#   file    → tail 直接读日志文件（log.files 配置路径，适合 1panel/宝塔 supervisor 守护进程）
+#   auto    → 优先读文件，文件未配置或不存在时回落 journalctl
+LOG_MODES = ("journal", "file", "auto")
+
+# 日志目标别名 → 配置键（a/astr/astrbot=AstrBot，n/nc/napcat=NapCat）
+LOG_TARGET_ALIASES: Dict[str, str] = {
+    "a": "astrbot", "astr": "astrbot", "astrbot": "astrbot",
+    "n": "napcat", "nc": "napcat", "napcat": "napcat",
+}
+
+# systemd 服务单元名的合法字符（防参数注入：不允许以 "-" 开头等）
+_UNIT_NAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.@\-]*$")
+
+
+def _is_admin_cmd(raw: str) -> bool:
+    """是否为 # 开头的管理员系统指令（这类消息不计入水群窗口/短语统计）。"""
+    return raw == COMMAND_REBOOT or raw == COMMAND_LOG or raw.startswith(COMMAND_LOG + " ")
+
 
 class MessageHandler:
     def __init__(
@@ -199,6 +241,8 @@ class MessageHandler:
         self.sign_path = os.path.join(data_dir, "sign_in.json")
         self.tracked_path = os.path.join(data_dir, "tracked_phrases.json")
         self.phrase_stats_path = os.path.join(data_dir, "phrase_stats.json")
+        # #yukireboot 重启标记：记录由哪个群触发重启，新进程启动后据此发送"启动成功"通知
+        self.reboot_notify_path = os.path.join(data_dir, "reboot_notify.json")
         self._stats_lock = asyncio.Lock()
         self._sign_lock = asyncio.Lock()
         self._phrase_stats_lock = asyncio.Lock()
@@ -215,6 +259,8 @@ class MessageHandler:
         self._ensure_files()
         # 内存缓存：追踪短语列表（避免每条消息都读文件）
         self._tracked_phrases: List[str] = self._load_tracked_phrases_sync()
+        # #yukireboot 二次确认状态：单槽位 (scope_key, 过期时间戳)，超时或确认后清除（内存有界）
+        self._pending_reboot: Optional[Tuple[str, float]] = None
 
     # ---------- 文件初始化 ----------
     def _ensure_files(self) -> None:
@@ -268,10 +314,11 @@ class MessageHandler:
         # 被动统计：任何群消息都计入（排行/趋势/个人查询都依赖，不设开关）
         await self._record_message(group_id, user_id, nickname)
         # 发言速度滚动窗口（同步内存操作，无 IO；跳过指令消息，统计真实水群）
-        if not raw.startswith("/"):
+        if not raw.startswith("/") and not _is_admin_cmd(raw):
             self._record_msg_time(group_id, user_id, nickname)
-        # 特定发言追踪（跳过 / 开头的指令消息，避免查询指令被误统计）
-        if not raw.startswith("/") and self.features.get("phrase_stats", True):
+        # 特定发言追踪（跳过指令消息，避免查询指令被误统计）
+        if (not raw.startswith("/") and not _is_admin_cmd(raw)
+                and self.features.get("phrase_stats", True)):
             await self._record_phrase_stats(group_id, user_id, nickname, raw_message)
 
         ws = self.ob.ws
@@ -343,8 +390,31 @@ class MessageHandler:
             arg = raw[len(COMMAND_FEATURE_ON):].strip()
             await self._cmd_feature_switch(group_id, user_id, True, arg)
             return
+        # 管理员系统指令：#yukireboot（重启，需二次确认）/ #log（输出服务日志）
+        # 不受功能开关控制，保证系统故障时始终可用；仅 BOT_ADMIN_QQ 指定的管理员可用
+        if raw == COMMAND_REBOOT:
+            await self._cmd_reboot(group_id, user_id)
+            return
+        if raw == COMMAND_LOG or raw.startswith(COMMAND_LOG + " "):
+            await self._cmd_log(group_id, user_id, raw[len(COMMAND_LOG):].strip())
+            return
+        # 帮助菜单：/yukihelp //help → 用户版；带参数 a|admin → 管理员版
+        # （管理员菜单只是指令文档，谁都能看；列出的指令本身仍需管理员权限）
         if self.features.get("help", True) and raw in (COMMAND_HELP, COMMAND_HELP_ALIAS):
-            await self._cmd_help(group_id)
+            await self._cmd_help(group_id, admin=False)
+            return
+        if self.features.get("help", True) and (
+            raw.startswith(COMMAND_HELP + " ") or raw.startswith(COMMAND_HELP_ALIAS + " ")
+        ):
+            prefix = COMMAND_HELP + " " if raw.startswith(COMMAND_HELP + " ") else COMMAND_HELP_ALIAS + " "
+            arg = raw[len(prefix):].strip()
+            if arg.lower() in ("a", "admin"):
+                await self._cmd_help(group_id, admin=True)
+            else:
+                await onebot.send_group_text(
+                    ws, group_id,
+                    "参数只认 a / admin 哦~\n/yukihelp 查看用户指令，/yukihelp a 查看管理员指令",
+                )
             return
         if self.features.get("sign", True) and raw in (COMMAND_SIGN, COMMAND_FORTUNE):
             await self._cmd_sign(group_id, user_id, nickname)
@@ -1009,10 +1079,11 @@ class MessageHandler:
             await onebot.send_group_text(ws, group_id, f"签到失败了：{e}")
 
     # ---------- 帮助菜单 ----------
-    async def _cmd_help(self, group_id: int) -> None:
+    async def _cmd_help(self, group_id: int, admin: bool = False) -> None:
+        """帮助菜单：admin=False 用户版（隐藏管理员组），admin=True 管理员版（仅管理员指令）。"""
         ws = self.ob.ws
         try:
-            image_b64 = await self.renderer.render_help(features=self.features)
+            image_b64 = await self.renderer.render_help(features=self.features, admin=admin)
             await onebot.send_group_image_b64(ws, group_id, image_b64)
         except Exception as e:
             logger.exception("帮助菜单生成失败: %s", e)
@@ -1088,6 +1159,221 @@ class MessageHandler:
         """启动时输出各功能开关状态（由 main.py 在启动日志中调用）。"""
         parts = [f"{name}={'on' if flag else 'off'}" for name, flag in self.features.items()]
         logger.info("功能开关：%s", " ".join(parts))
+
+    # ---------- 管理员系统指令：#yukireboot / #log ----------
+    async def _cmd_reboot(self, group_id: int, user_id: int) -> None:
+        """管理员：重启 Yuki 进程。需 30 秒内发送第二次 #yukireboot 二次确认。
+
+        确认状态只保留一个槽位（群+发送人），过期或确认后清除，不会累积。
+        重启采用 os.execv 原地换新进程：与 systemd（Restart=on-failure）、
+        宝塔/1panel 进程守护均兼容，重启期间 NapCat 会自动重连。
+        """
+        ws = self.ob.ws
+        if str(user_id) != ADMIN_QQ:
+            await onebot.send_group_text(ws, group_id, "只有管理员才能使用此指令~")
+            return
+        scope = f"{group_id}_{user_id}"
+        now = time.time()
+        if self._pending_reboot and self._pending_reboot[0] == scope and self._pending_reboot[1] > now:
+            self._pending_reboot = None
+            await onebot.send_group_text(ws, group_id, "🔄 收到确认，Yuki 正在重启，几秒后恢复~")
+            logger.warning("管理员 %s 二次确认，开始重启进程", user_id)
+            try:
+                # 重启标记持久化到磁盘：execv 后内存全清，新进程在 NapCat 重连时
+                # 据此向本群发送"启动成功"通知（发送后自动删除标记）
+                await self._save_json(self.reboot_notify_path, {"group_id": group_id})
+                await self._do_reboot()
+            except Exception as e:
+                # execv 失败进程其实还活着：清掉标记，避免下次重连误发通知
+                try:
+                    os.remove(self.reboot_notify_path)
+                except OSError:
+                    pass
+                logger.exception("重启执行失败: %s", e)
+                await onebot.send_group_text(ws, group_id, f"重启失败了：{e}")
+            return
+        self._pending_reboot = (scope, now + REBOOT_CONFIRM_WINDOW_SEC)
+        await onebot.send_group_text(
+            ws, group_id,
+            "⚠️ 确认要重启 Yuki 吗？重启期间会短暂失去响应（几秒）。\n"
+            f"{REBOOT_CONFIRM_WINDOW_SEC} 秒内再次发送 {COMMAND_REBOOT} 以确认。",
+        )
+
+    async def _do_reboot(self) -> None:
+        """真正执行重启：先短暂延迟确保上一条回复发出，再原地替换为新进程。"""
+        await asyncio.sleep(1.5)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    async def maybe_send_startup_notice(self, ws: Any) -> None:
+        """NapCat 连入时由 main.py 调用：存在重启标记则向触发群发送"启动成功"通知。
+
+        标记文件无论发送成败都会删除——只在该次重启后的首次连入时通知一次，
+        之后 NapCat 网络抖动重连不会重复发送。
+        """
+        try:
+            if not os.path.exists(self.reboot_notify_path):
+                return
+            data = await self._load_json(self.reboot_notify_path)
+            try:
+                os.remove(self.reboot_notify_path)
+            except OSError:
+                pass
+            gid = data.get("group_id")
+            if gid:
+                try:
+                    await onebot.send_group_text(ws, int(gid), "✅ Yuki 启动成功，已恢复运行~")
+                    logger.info("已向群 %s 发送重启后启动成功通知", gid)
+                except Exception as e:
+                    logger.warning("发送启动成功通知失败: %s", e)
+        except Exception as e:
+            logger.warning("处理重启通知标记失败: %s", e)
+
+    async def _cmd_log(self, group_id: int, user_id: int, arg: str) -> None:
+        """管理员：输出 astrbot / napcat 最近日志，方便诊断。
+
+        用法：#log <a|astr|astrbot|n|nc|napcat> [行数]
+        行数默认 15，最大 200。日志源在 config.json 的 "log" 块配置：
+        supervisor/文件日志用 file 模式（tail），systemd 服务用 journal 模式（journalctl）。
+        """
+        ws = self.ob.ws
+        if str(user_id) != ADMIN_QQ:
+            await onebot.send_group_text(ws, group_id, "只有管理员才能使用此指令~")
+            return
+        tokens = arg.split()
+        if not tokens or len(tokens) > 2:
+            await onebot.send_group_text(
+                ws, group_id,
+                "用法：#log <目标> [行数]\n"
+                "目标：a / astr / astrbot = AstrBot 日志；n / nc / napcat = NapCat 日志\n"
+                f"行数默认 {LOG_DEFAULT_LINES}，最大 {LOG_MAX_LINES}。示例：#log astr 30",
+            )
+            return
+        target = LOG_TARGET_ALIASES.get(tokens[0].lower())
+        if target is None:
+            await onebot.send_group_text(
+                ws, group_id,
+                f"不认识的目标「{tokens[0]}」哦~ 可用：a / astr / astrbot / n / nc / napcat",
+            )
+            return
+        num = LOG_DEFAULT_LINES
+        if len(tokens) == 2:
+            if not tokens[1].isdigit():
+                await onebot.send_group_text(ws, group_id, "行数得是纯数字哦~ 例如：#log astr 30")
+                return
+            num = int(tokens[1])
+            if not 1 <= num <= LOG_MAX_LINES:
+                await onebot.send_group_text(
+                    ws, group_id, f"行数需在 1~{LOG_MAX_LINES} 之间哦~"
+                )
+                return
+        try:
+            text = await self._fetch_log_text(target, num)
+            text = self._tail_truncate(text, LOG_MAX_CHARS)
+            # CQ 码转义：日志内容原样发出可能被 NapCat 当作 CQ 码解析（伪造图片/提及等）
+            text = text.replace("[", "&#91;").replace("]", "&#93;")
+            await onebot.send_group_text(ws, group_id, f"📋 {target} 最近 {num} 行日志：\n{text}")
+        except Exception as e:
+            logger.exception("获取日志失败: %s", e)
+            await onebot.send_group_text(ws, group_id, f"获取日志失败了：{e}")
+
+    async def _log_sources(self) -> Dict[str, Dict[str, str]]:
+        """读取 config.json 的 "log" 块，返回每个目标的有效日志源。
+
+        返回 {"astrbot": {"mode": "...", "file": "...", "unit": "..."}, "napcat": {...}}。
+        无配置 / 配置非法时逐项回落默认（mode=auto、无文件、单元名与目标同名）。
+        """
+        sources = {t: {"mode": "auto", "file": "", "unit": t} for t in ("astrbot", "napcat")}
+        try:
+            async with aiofiles.open(self.config_path, "r", encoding="utf-8") as f:
+                content = await f.read()
+            cfg = json.loads(content) if content.strip() else {}
+            log_cfg = cfg.get("log") if isinstance(cfg, dict) else None
+            if not isinstance(log_cfg, dict):
+                return sources
+            mode = log_cfg.get("mode")
+            if isinstance(mode, str) and mode in LOG_MODES:
+                for entry in sources.values():
+                    entry["mode"] = mode
+            elif mode is not None:
+                logger.warning("config.json 的 log.mode 非法（%s），按 auto 处理", mode)
+            units = log_cfg.get("units")
+            if isinstance(units, dict):
+                for t in ("astrbot", "napcat"):
+                    v = units.get(t)
+                    if isinstance(v, str) and _UNIT_NAME_RE.match(v):
+                        sources[t]["unit"] = v
+                    elif v is not None:
+                        logger.warning("config.json 的 log.units.%s 含非法字符，已忽略", t)
+            files = log_cfg.get("files")
+            if isinstance(files, dict):
+                for t in ("astrbot", "napcat"):
+                    v = files.get(t)
+                    if isinstance(v, str) and v.strip() and not v.startswith("-"):
+                        sources[t]["file"] = v.strip()
+                    elif v is not None:
+                        logger.warning("config.json 的 log.files.%s 不是合法路径，已忽略", t)
+        except (json.JSONDecodeError, IOError, OSError) as e:
+            logger.warning("config.json 读取失败（%s），日志源用默认值", e)
+        return sources
+
+    async def _fetch_log_text(self, target: str, num: int) -> str:
+        """按配置获取目标最近 num 行日志：file → tail 读文件；journal → journalctl；
+        auto → 优先读文件，文件未配置/不存在时回落 journalctl。"""
+        src = (await self._log_sources())[target]
+        if src["mode"] == "file" and not os.path.isfile(src["file"]):
+            raise RuntimeError(f"日志文件不存在：{src['file']}（检查 config.json 的 log.files）")
+        if src["mode"] == "file" or (src["mode"] == "auto" and src["file"]
+                                     and os.path.isfile(src["file"])):
+            return await self._run_tail(src["file"], num)
+        note = ""
+        if src["mode"] == "auto" and src["file"]:
+            note = "⚠️ 配置的日志文件不存在，已回落 journalctl\n"
+        return note + await self._run_journalctl(src["unit"], num)
+
+    async def _exec_capture(self, args: List[str]) -> str:
+        """执行外部命令并捕获 stdout。
+
+        exec 数组形式调用（无 shell，无注入面）；超时杀进程并回收，避免僵尸进程。
+        """
+        proc = await asyncio.create_subprocess_exec(
+            *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            out, err = await asyncio.wait_for(proc.communicate(), timeout=LOG_TIMEOUT_SEC)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()  # 回收子进程，避免僵尸进程
+            raise RuntimeError(f"{args[0]} 执行超时（>{LOG_TIMEOUT_SEC} 秒）")
+        text = out.decode("utf-8", errors="replace").strip()
+        if text:
+            return text
+        err_text = err.decode("utf-8", errors="replace").strip().splitlines()
+        if proc.returncode != 0:
+            raise RuntimeError(
+                err_text[-1] if err_text else f"{args[0]} 退出码 {proc.returncode}"
+            )
+        return "（暂无日志输出）"
+
+    async def _run_journalctl(self, unit: str, num: int) -> str:
+        """journalctl 拉取指定 systemd 服务最近 num 行日志。"""
+        return await self._exec_capture(
+            ["journalctl", "-u", unit, "-n", str(num), "--no-pager"]
+        )
+
+    async def _run_tail(self, path: str, num: int) -> str:
+        """tail -n 读取日志文件最近 num 行（supervisor / 1panel 等文件日志）。"""
+        return await self._exec_capture(["tail", "-n", str(num), path])
+
+    @staticmethod
+    def _tail_truncate(text: str, limit: int) -> str:
+        """超长时保留末尾（最新）日志并按整行截断，避免 QQ 端消息被硬截。"""
+        if len(text) <= limit:
+            return text
+        tail = text[-limit:]
+        nl = tail.find("\n")
+        if 0 <= nl < len(tail) - 1:
+            tail = tail[nl + 1:]
+        return "（日志过长，仅保留末尾部分）\n" + tail
 
     # ---------- 头像拉取 ----------
     async def _fetch_avatar_b64(self, user_id: Any) -> str:

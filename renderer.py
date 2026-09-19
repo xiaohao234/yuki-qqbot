@@ -180,13 +180,14 @@ class Renderer:
         )
         return await self.render_html_to_png_b64(html)
 
-    async def render_help(self, features: Dict[str, bool] | None = None) -> str:
+    async def render_help(self, features: Dict[str, bool] | None = None, admin: bool = False) -> str:
         """渲染帮助菜单图片（指令列表静态写在 help.html 中，新增指令时同步更新模板）。
 
         features 为功能开关（handler.features），停用的功能组在图中置灰并标注"已停用"。
+        admin=False 渲染用户版（隐藏管理员组）；admin=True 渲染管理员版（仅管理员指令）。
         """
         features = features or {}
-        html = self._render("help.html", features=features)
+        html = self._render("help.html", features=features, admin=admin)
         return await self.render_html_to_png_b64(html)
 
     @staticmethod

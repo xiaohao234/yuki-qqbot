@@ -21,3 +21,9 @@ _test*
 # IDE
 .idea/
 .vscode/
+
+# 安装脚本生成的本机环境记录
+.install.env
+
+# 渲染样例产物（可用 ptest/render_samples.py 重新生成）
+ptest/*.png

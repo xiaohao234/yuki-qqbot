@@ -28,11 +28,44 @@ try:
 except Exception:
     pass
 
+
+class _ColorFormatter(logging.Formatter):
+    """给 [级别] 前缀加 ANSI 颜色：WARNING 黄、ERROR 红、CRITICAL 亮红、INFO 青、DEBUG 灰。
+
+    只做"已格式化整行"中第一个 [级别] 段的替换（前缀位置），消息正文不受影响。
+    """
+
+    COLORS = {
+        "DEBUG": "\033[90m",
+        "INFO": "\033[36m",
+        "WARNING": "\033[33m",
+        "ERROR": "\033[31m",
+        "CRITICAL": "\033[1;31m",
+    }
+    RESET = "\033[0m"
+
+    def format(self, record: logging.LogRecord) -> str:
+        formatted = super().format(record)
+        color = self.COLORS.get(record.levelname)
+        if not color:
+            return formatted
+        return formatted.replace(
+            f"[{record.levelname}]", f"{color}[{record.levelname}]{self.RESET}", 1
+        )
+
+
+# 仅在终端（TTY）上启用颜色：重定向到文件/journal 时输出纯文本，
+# 避免日志文件、1panel 面板和群里 #log 输出混入 ANSI 转义码乱码。
+_STDOUT_IS_TTY = bool(getattr(sys.stdout, "isatty", lambda: False)())
+_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    format=_LOG_FORMAT,
     stream=sys.stdout,
 )
+if _STDOUT_IS_TTY:
+    logging.getLogger().handlers[0].setFormatter(_ColorFormatter(_LOG_FORMAT))
 logger = logging.getLogger("yuki")
 
 HOST = os.environ.get("BOT_HOST", "127.0.0.1")

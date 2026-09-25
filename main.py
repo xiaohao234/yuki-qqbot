@@ -1,7 +1,8 @@
 """程序入口：aiohttp WebSocket Server。
 
 - 监听 ws://127.0.0.1:8082，接受 NapCat 的反向 WebSocket 连接。
-- 启动时初始化 aiohttp ClientSession 与 Playwright 浏览器（复用）。
+- 启动时初始化 aiohttp ClientSession；Chromium 懒启动（首次渲染才拉起，
+  闲置自动回收），降低小内存设备的常驻占用。
 - 每条收到的上报事件交给 handler 处理（并发处理，互不阻塞）。
 """
 
@@ -14,7 +15,6 @@ import sys
 
 import aiohttp
 from aiohttp import web, WSMsgType
-from playwright.async_api import async_playwright
 
 import onebot
 from handler import MessageHandler
@@ -80,21 +80,18 @@ ob_conn = onebot.OneBotConnection()
 handler = None  # MessageHandler，在 _on_startup 中创建（NapCat 连入前必然已就绪）
 _renderer: Renderer
 _http_session: aiohttp.ClientSession
-_playwright = None
-_browser = None
 # 后台事件任务的强引用集合（防止 task 执行中被 GC 回收；完成后自动移除，不会无限增长）
 _pending_tasks: set = set()
 
 
 async def _on_startup(app: web.Application) -> None:
-    global _http_session, _playwright, _browser, _renderer, handler
+    global _http_session, _renderer, handler
     os.makedirs(DATA_DIR, exist_ok=True)
 
     _http_session = aiohttp.ClientSession()
-    _playwright = await async_playwright().start()
-    _browser = await _playwright.chromium.launch(args=["--no-sandbox"])
+    # Chromium 懒启动：首次渲染时才拉起，闲置 15 分钟自动回收（见 renderer.py）
+    _renderer = Renderer(TEMPLATES_DIR)
 
-    _renderer = Renderer(_browser, TEMPLATES_DIR)
     handler = MessageHandler(ob_conn, _renderer, _http_session, DATA_DIR)
 
     # 启动时输出各功能开关状态（config.json，见 features.py）
@@ -103,12 +100,10 @@ async def _on_startup(app: web.Application) -> None:
 
 
 async def _on_cleanup(app: web.Application) -> None:
-    global _http_session, _browser, _playwright
+    global _http_session
     logger.info("正在关闭资源...")
-    if _browser is not None:
-        await _browser.close()
-    if _playwright is not None:
-        await _playwright.stop()
+    if _renderer is not None:
+        await _renderer.close()
     if _http_session is not None:
         await _http_session.close()
     logger.info("已关闭，再见~")

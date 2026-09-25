@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import io
 import json
 import logging
 import os
@@ -40,7 +41,7 @@ import random
 import re
 import sys
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -52,7 +53,19 @@ import onebot
 from features import DEFAULT_FEATURES, config_path, load_features
 from repeat import RepeatDetector
 
+try:
+    from PIL import Image
+    _HAS_PIL = True
+except ImportError:  # Pillow 未安装时头像不压缩（自动回落原图），功能不受影响
+    Image = None
+    _HAS_PIL = False
+
 logger = logging.getLogger("handler")
+
+# ---------- 头像缓存（有上限的 LRU + 并发去重）----------
+# 渲染峰值内存大头是内嵌 base64 原图：压缩后单张几十 KB → 2~4 KB
+AVATAR_CACHE_MAX = 300          # 缓存条数上限（LRU 淘汰）
+AVATAR_CACHE_TTL_SEC = 6 * 3600  # 缓存有效期（QQ 头像变更低频，6 小时足够新）
 
 # 匹配 CQ 码里的 @ 对象 qq 号：[CQ:at,qq=12345] 或 [CQ:at,qq=12345,name=...]
 _AT_RE = re.compile(r"\[CQ:at,qq=(\d+)[,\]]")
@@ -283,6 +296,9 @@ class MessageHandler:
         self._tracked_phrases: List[str] = self._load_tracked_phrases_sync()
         # #yukireboot 二次确认状态：单槽位 (scope_key, 过期时间戳)，超时或确认后清除（内存有界）
         self._pending_reboot: Optional[Tuple[str, float]] = None
+        # 头像 LRU 缓存：uid -> (拉取时间, data URI)；并发去重：uid -> Future
+        self._avatar_cache: "OrderedDict[str, Tuple[float, str]]" = OrderedDict()
+        self._avatar_inflight: Dict[str, "asyncio.Future"] = {}
 
     # ---------- 文件初始化 ----------
     def _ensure_files(self) -> None:
@@ -1421,21 +1437,69 @@ class MessageHandler:
             tail = tail[nl + 1:]
         return "（日志过长，仅保留末尾部分）\n" + tail
 
-    # ---------- 头像拉取 ----------
+    # ---------- 头像拉取（压缩 + LRU 缓存 + 并发去重）----------
     async def _fetch_avatar_b64(self, user_id: Any) -> str:
-        """通过 aiohttp 拉取 QQ 头像，返回 data URI（失败返回空串）。"""
-        if not user_id:
+        """拉取 QQ 头像，压缩后返回 data URI（失败返回空串）。
+
+        带容量上限的 LRU 缓存 + 并发去重：排行榜/统计并发渲染同一批用户时
+        只发一次 HTTP，其余等待同一个 Future；缓存满后淘汰最旧条目（内存有界）。
+        """
+        key = str(user_id)
+        if not key or key == "None":
             return ""
+        cached = self._avatar_cache.get(key)
+        if cached and time.time() - cached[0] < AVATAR_CACHE_TTL_SEC:
+            self._avatar_cache.move_to_end(key)
+            return cached[1]
+        fut = self._avatar_inflight.get(key)
+        if fut is not None:
+            return await fut  # 并发去重：等第一次拉取的结果
+        fut = asyncio.get_running_loop().create_future()
+        self._avatar_inflight[key] = fut
+        try:
+            uri = await self._do_fetch_avatar(user_id)
+            if uri:
+                self._avatar_cache[key] = (time.time(), uri)
+                while len(self._avatar_cache) > AVATAR_CACHE_MAX:
+                    self._avatar_cache.popitem(last=False)  # 淘汰最旧
+            fut.set_result(uri)
+            return uri
+        finally:
+            self._avatar_inflight.pop(key, None)
+
+    async def _do_fetch_avatar(self, user_id: Any) -> str:
+        """实际发起 HTTP 拉取并压缩（不发第二个请求的内部实现，便于测试打桩）。"""
         url = f"http://q1.qlogo.cn/g?b=qq&nk={user_id}&s=100"
         try:
             async with self.http.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 if resp.status == 200:
                     data = await resp.read()
                     if data:
-                        mime = resp.content_type or "image/png"
-                        b64 = base64.b64encode(data).decode("ascii")
-                        return f"data:{mime};base64,{b64}"
+                        data = self._compress_avatar(data)
+                        return "data:image/jpeg;base64," + base64.b64encode(data).decode("ascii")
                 logger.warning("拉取头像失败 status=%s uid=%s", resp.status, user_id)
         except Exception as e:
             logger.warning("拉取头像异常 uid=%s: %s", user_id, e)
         return ""
+
+    @staticmethod
+    def _compress_avatar(data: bytes) -> bytes:
+        """头像压缩：缩到 64px JPEG q80（卡片里显示尺寸 ≤48px，视觉无损）。
+
+        渲染瞬时尖峰的主因是 Top N 头像原图内嵌 base64（几十 KB/张），
+        压缩后降到 2~4 KB/张，Top15 的 HTML 从 MB 级降到几十 KB。
+        Pillow 缺失或图片解码失败时返回原图兜底。
+        """
+        if not _HAS_PIL:
+            return data
+        try:
+            with Image.open(io.BytesIO(data)) as img:
+                img = img.convert("RGB")
+                img.thumbnail((64, 64))
+                buf = io.BytesIO()
+                img.save(buf, "JPEG", quality=80)
+                out = buf.getvalue()
+                # 压缩反而变大（极小原图）时用原图
+                return out if len(out) < len(data) else data
+        except Exception:
+            return data

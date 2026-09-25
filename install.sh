@@ -136,7 +136,7 @@ fi
 PIP_ARGS=""
 [ -n "$PIP_INDEX" ] && PIP_ARGS="-i $PIP_INDEX"
 
-if ask_yn "立即安装依赖（aiohttp/aiofiles/playwright/jinja2）？" "y"; then
+if ask_yn "立即安装依赖（aiohttp/aiofiles/playwright/jinja2/Pillow）？" "y"; then
     # shellcheck disable=SC2086
     "$VENV_PY" -m pip install -q --upgrade pip $PIP_ARGS
     # shellcheck disable=SC2086

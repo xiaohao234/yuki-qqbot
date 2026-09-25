@@ -1,30 +1,120 @@
 """Playwright 渲染封装：将 HTML 模板渲染为 Base64 PNG。
 
-- 浏览器实例在程序启动时启动一次，复用 new_page()。
-- 模板使用 Jinja2 渲染（适合循环生成 Top 10 列表）。
+生命周期（针对小内存设备的懒启动 + 闲置回收，消除常驻 Chromium 的空载内存）：
+- 懒启动：首次渲染时才启动 Playwright 驱动 + Chromium（冷启动约 20s，首图变慢可接受）；
+- 闲置回收：连续 BOT_BROWSER_IDLE_SEC 秒（默认 900）无渲染任务则关闭 Chromium
+  并停止驱动，空闲时段（尤其深夜）释放 450~550 MB；
+- 每次渲染独立开页、用完即关（页面渲染进程内存随关闭归还系统）；
+- 渲染并发闸门 _RENDER_CONCURRENCY=2：防止刷屏指令同时开页打爆内存；
+- 每次渲染记录耗时日志，便于线上验证内存/性能优化效果。
+
+传入外部 browser（测试脚本/特殊部署）时进入外部模式：不做懒启动与回收。
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
-from typing import Any, Dict, List
+import os
+import time
+from typing import Any, Dict, List, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 logger = logging.getLogger("renderer")
 
+# Chromium 启动参数：小内存设备加固（软渲染、限 V8 堆、不用 /dev/shm）
+CHROMIUM_ARGS = [
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--js-flags=--max-old-space-size=256",
+]
+# 渲染并发闸门：同时最多开这么多页面
+_RENDER_CONCURRENCY = 2
+# 闲置回收秒数（环境变量 BOT_BROWSER_IDLE_SEC 可覆盖；0 = 不回收）
+IDLE_SEC = int(os.environ.get("BOT_BROWSER_IDLE_SEC", "900"))
+
 
 class Renderer:
-    def __init__(self, browser: Any, templates_dir: str) -> None:
-        self.browser = browser
+    def __init__(self, templates_dir: str, browser: Any = None) -> None:
         self.env = Environment(
             loader=FileSystemLoader(templates_dir),
             autoescape=select_autoescape(["html", "xml"]),
             trim_blocks=True,
             lstrip_blocks=True,
         )
+        self._external_browser = browser  # 外部传入的浏览器：生命周期由调用方管理
+        self._playwright: Optional[Any] = None
+        self._browser: Optional[Any] = None
+        self._start_lock = asyncio.Lock()
+        self._sem = asyncio.Semaphore(_RENDER_CONCURRENCY)
+        self._last_render_ts = 0.0
+        self._idle_task: Optional["asyncio.Task"] = None
 
+    # ---------- 浏览器生命周期 ----------
+    async def _ensure_browser(self) -> Any:
+        """懒启动：确保 Chromium 可用（带锁防并发渲染时重复启动）。"""
+        if self._external_browser is not None:
+            return self._external_browser
+        if self._browser is not None and self._browser.is_connected():
+            return self._browser
+        async with self._start_lock:
+            if self._browser is not None and self._browser.is_connected():
+                return self._browser
+            if self._playwright is None:
+                from playwright.async_api import async_playwright
+
+                logger.info("首次渲染：正在启动 Playwright 驱动…")
+                self._playwright = await async_playwright().start()
+            logger.info("正在启动 Chromium（懒启动，冷启动约 20s）…")
+            self._browser = await self._playwright.chromium.launch(args=CHROMIUM_ARGS)
+            logger.info("Chromium 已就绪")
+            return self._browser
+
+    def _schedule_idle_recycle(self) -> None:
+        """渲染结束后重置闲置计时：IDLE_SEC 秒内无新渲染则回收整套浏览器。"""
+        if self._external_browser is not None or IDLE_SEC <= 0:
+            return
+        self._last_render_ts = time.time()
+        if self._idle_task is not None and not self._idle_task.done():
+            self._idle_task.cancel()
+        self._idle_task = asyncio.create_task(self._idle_recycler())
+
+    async def _idle_recycler(self) -> None:
+        try:
+            while True:
+                remaining = IDLE_SEC - (time.time() - self._last_render_ts)
+                if remaining <= 0:
+                    break
+                await asyncio.sleep(remaining)
+            logger.info("Chromium 已闲置 %d 秒，自动回收（下次渲染时冷启动）", IDLE_SEC)
+            await self._shutdown()
+        except asyncio.CancelledError:
+            pass  # 闲置期间来了新渲染任务，重新计时
+
+    async def _shutdown(self) -> None:
+        if self._browser is not None:
+            try:
+                await self._browser.close()
+            except Exception:
+                pass
+            self._browser = None
+        if self._playwright is not None:
+            try:
+                await self._playwright.stop()
+            except Exception:
+                pass
+            self._playwright = None
+
+    async def close(self) -> None:
+        """进程退出时调用：取消回收任务并释放浏览器/驱动（幂等）。"""
+        if self._idle_task is not None and not self._idle_task.done():
+            self._idle_task.cancel()
+        await self._shutdown()
+
+    # ---------- 渲染 ----------
     def _render(self, name: str, **context: Any) -> str:
         tpl = self.env.get_template(name)
         return tpl.render(**context)
@@ -36,17 +126,26 @@ class Renderer:
         视口必须 ≥736 才能让 margin:0 auto 生效（卡片水平居中），
         760 时左右各留 40px 对称留白。720 会导致 680px 卡片溢出、内容右偏 8px。
         """
-        page = await self.browser.new_page(
-            viewport={"width": width, "height": 800},
-            device_scale_factor=2,  # 2x 提升清晰度
+        t0 = time.perf_counter()
+        async with self._sem:  # 并发闸门：防止刷屏指令同时开页打爆内存
+            try:
+                browser = await self._ensure_browser()
+                page = await browser.new_page(
+                    viewport={"width": width, "height": 800},
+                    device_scale_factor=2,  # 2x 提升清晰度
+                )
+                try:
+                    # 等待网络空闲（头像以 data URI 内嵌，通常无需外部请求）
+                    await page.set_content(html, wait_until="networkidle")
+                    img_bytes = await page.screenshot(full_page=True, type="png")
+                finally:
+                    await page.close()
+            finally:
+                self._schedule_idle_recycle()  # 成功失败都重置闲置计时
+        logger.info(
+            "渲染完成：%.2f s，HTML %.1f KB", time.perf_counter() - t0, len(html) / 1024
         )
-        try:
-            # 等待网络空闲（头像以 data URI 内嵌，通常无需外部请求）
-            await page.set_content(html, wait_until="networkidle")
-            img_bytes = await page.screenshot(full_page=True, type="png")
-            return base64.b64encode(img_bytes).decode("ascii")
-        finally:
-            await page.close()
+        return base64.b64encode(img_bytes).decode("ascii")
 
     async def render_stats(
         self, group_id: int, group_name: str, top_users: List[dict], total: int = 0,

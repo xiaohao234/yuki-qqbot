@@ -89,7 +89,7 @@ async def main() -> int:
         print("       请先：pip install -r requirements.txt && playwright install chromium")
         return 1
 
-    renderer = Renderer(browser, _TEMPLATES)
+    renderer = Renderer(_TEMPLATES, browser=browser)  # 外部浏览器模式：不做懒启动/回收
     session = aiohttp.ClientSession()
     today = date.today().isoformat()
 

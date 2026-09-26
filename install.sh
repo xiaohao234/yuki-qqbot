@@ -7,7 +7,8 @@
 #      sudo bash install.sh        （推荐，安装到 /opt/yuki 并可选 systemd）
 #      bash install.sh             （无 root 时仅支持本地目录安装）
 #
-#  可重复执行 = 升级：已有 config.json / data/ 不会被覆盖。
+#  可重复执行 = 升级：检测到此前安装时自动跳过已完成步骤，
+#  config.json / data/ 不会被覆盖；配置项会带出旧值作为默认。
 # ============================================================
 set -e
 
@@ -110,6 +111,19 @@ else
 fi
 cd "$TARGET_DIR"
 
+# 检测此前安装：.install.env 由本脚本生成，存在则已完成步骤默认跳过、配置带出旧值
+PREV_INSTALLED=0
+PREV_ADMIN=""; PREV_HOST=""; PREV_PORT=""; PREV_TOKEN=""
+DEPS_DONE=0; CHROMIUM_DONE=0
+if [ -f ".install.env" ]; then
+    PREV_INSTALLED=1
+    # shellcheck disable=SC1091
+    . ./.install.env 2>/dev/null || true
+    PREV_ADMIN="$ADMIN_QQ"; PREV_HOST="$BOT_HOST"; PREV_PORT="$BOT_PORT"; PREV_TOKEN="$ACCESS_TOKEN"
+    DEPS_DONE="${DEPS_DONE:-0}"; CHROMIUM_DONE="${CHROMIUM_DONE:-0}"
+    ok "检测到此前安装记录，已完成步骤将默认跳过（配置项回车即保留旧值）"
+fi
+
 # ---------- [3/7] Python 虚拟环境 ----------
 info "步骤 3/7：创建 Python 虚拟环境"
 if [ ! -x ".venv/bin/python" ]; then
@@ -136,24 +150,33 @@ fi
 PIP_ARGS=""
 [ -n "$PIP_INDEX" ] && PIP_ARGS="-i $PIP_INDEX"
 
-if ask_yn "立即安装依赖（aiohttp/aiofiles/playwright/jinja2/Pillow）？" "y"; then
+# 此前已装过 → 默认跳过（回车即跳过；输入 y 可重装升级依赖）
+DEPS_DEF="y"
+if [ "$PREV_INSTALLED" -eq 1 ] && [ "$DEPS_DONE" = "1" ]; then DEPS_DEF="n"; fi
+if ask_yn "立即安装/更新依赖（aiohttp/aiofiles/playwright/jinja2/Pillow）？" "$DEPS_DEF"; then
     # shellcheck disable=SC2086
     "$VENV_PY" -m pip install -q --upgrade pip $PIP_ARGS
     # shellcheck disable=SC2086
     "$VENV_PY" -m pip install -q -r requirements.txt $PIP_ARGS
+    DEPS_DONE=1
     ok "Python 依赖安装完成"
 else
-    warn "跳过依赖安装（可稍后手动执行：$VENV_PY -m pip install -r requirements.txt）"
+    DEPS_DONE=1
+    info "跳过依赖安装（沿用已有环境；需要时可手动：$VENV_PY -m pip install -r requirements.txt）"
 fi
 
-if ask_yn "安装 Playwright Chromium 内核（渲染图片必需，约 150MB）？" "y"; then
+CHROME_DEF="y"
+if [ "$PREV_INSTALLED" -eq 1 ] && [ "$CHROMIUM_DONE" = "1" ]; then CHROME_DEF="n"; fi
+if ask_yn "安装 Playwright Chromium 内核（渲染图片必需，约 150MB）？" "$CHROME_DEF"; then
     if [ "$IS_ROOT" -eq 1 ] && ask_yn "先安装 Chromium 系统依赖库（apt 环境，首次部署建议）？" "y"; then
         "$VENV_PY" -m playwright install-deps chromium || warn "系统依赖安装失败，若启动报错请手动执行 playwright install-deps"
     fi
     "$VENV_PY" -m playwright install chromium
+    CHROMIUM_DONE=1
     ok "Chromium 内核安装完成"
 else
-    warn "跳过 Chromium 安装（不装的话所有图片功能无法渲染）"
+    CHROMIUM_DONE=1
+    info "跳过 Chromium 安装（沿用已有环境）"
 fi
 
 # ---------- [5/7] 基础配置 ----------
@@ -166,30 +189,43 @@ else
     ok "已存在 config.json，保留不覆盖"
 fi
 
+DEF_ADMIN="$PREV_ADMIN"; [ -z "$DEF_ADMIN" ] && DEF_ADMIN="0"
 echo ""
 echo "管理员 QQ 用于 #yukireboot / #log / /统计发言 等管理员指令的权限校验。"
 echo "可配置多个，用英文逗号分隔（如 123,456）；填 0 = 禁用全部管理员指令。"
-ask "BOT_ADMIN_QQ（管理员 QQ，多个逗号分隔）" "0"
+ask "BOT_ADMIN_QQ（管理员 QQ，多个逗号分隔）" "$DEF_ADMIN"
 ADMIN_QQ="$REPLY"
 
+DEF_HOST="$PREV_HOST"; [ -z "$DEF_HOST" ] && DEF_HOST="127.0.0.1"
+DEF_PORT="$PREV_PORT"; [ -z "$DEF_PORT" ] && DEF_PORT="8082"
 echo ""
 echo "监听地址：NapCat 与 Yuki 在同一台机器用 127.0.0.1；"
 echo "NapCat 在其他机器（反向 WS 连入）用 0.0.0.0，并记得在防火墙放行端口。"
-ask "监听地址 BOT_HOST" "127.0.0.1"
+ask "监听地址 BOT_HOST" "$DEF_HOST"
 BOT_HOST="$REPLY"
-ask "监听端口 BOT_PORT" "8082"
+ask "监听端口 BOT_PORT" "$DEF_PORT"
 BOT_PORT="$REPLY"
 if [ "$BOT_HOST" = "0.0.0.0" ]; then
     warn "已选择对外监听，请确认在防火墙/安全组放行 $BOT_PORT 端口！"
 fi
 
-# 保存本次配置（systemd unit 与结尾摘要共用）
+echo ""
+echo "鉴权 token：设置后 NapCat 反向 WS 必须携带相同 access_token 才能连入"
+echo "（OneBot v11 标准：Authorization 头或 ?access_token= 参数均可）。"
+echo "留空 = 不鉴权（任何能连到端口的客户端都可接入，公网部署建议设置）。"
+ask "BOT_ACCESS_TOKEN（鉴权 token，默认留空禁用）" "$PREV_TOKEN"
+ACCESS_TOKEN="$REPLY"
+
+# 保存本次配置（systemd unit 与结尾摘要共用；含步骤完成标记供下次跳过）
 cat > "$TARGET_DIR/.install.env" <<EOF
 INSTALL_DIR="$TARGET_DIR"
 VENV_PY="$VENV_PY"
 ADMIN_QQ="$ADMIN_QQ"
 BOT_HOST="$BOT_HOST"
 BOT_PORT="$BOT_PORT"
+ACCESS_TOKEN="$ACCESS_TOKEN"
+DEPS_DONE=$DEPS_DONE
+CHROMIUM_DONE=$CHROMIUM_DONE
 EOF
 chmod 600 "$TARGET_DIR/.install.env"
 ok "配置已保存到 .install.env"
@@ -214,6 +250,7 @@ Environment=PYTHONUNBUFFERED=1
 Environment=BOT_ADMIN_QQ=$ADMIN_QQ
 Environment=BOT_HOST=$BOT_HOST
 Environment=BOT_PORT=$BOT_PORT
+Environment=BOT_ACCESS_TOKEN=$ACCESS_TOKEN
 
 [Install]
 WantedBy=multi-user.target
@@ -245,11 +282,18 @@ ADMIN_NOTE=""
 if [ "$ADMIN_QQ" = "0" ]; then ADMIN_NOTE="（当前为 0，管理员指令未启用！）"; fi
 echo "  管理员 QQ  : $ADMIN_QQ $ADMIN_NOTE"
 echo "  监听地址   : $BOT_HOST:$BOT_PORT"
+TOKEN_NOTE="未设置（不鉴权：任何能连到端口的客户端都可接入）"
+if [ -n "$ACCESS_TOKEN" ]; then TOKEN_NOTE="已设置（内容不回显）"; fi
+echo "  鉴权 token : $TOKEN_NOTE"
 echo "  自启动     : $([ "$SYSTEMD_ENABLED" -eq 1 ] && echo 'systemd（yuki.service）' || echo '未配置，请用你的守护进程方式启动')"
 echo ""
 echo "  下一步：在 NapCat 配置反向 WebSocket 连到"
 echo "      ws://<本机IP>:$BOT_PORT/"
-  echo "  （同机用 127.0.0.1:${BOT_PORT}，跨机用服务器 IP 并放行端口）"echo ""
+echo "  （同机用 127.0.0.1:${BOT_PORT}，跨机用服务器 IP 并放行端口）"
+if [ -n "$ACCESS_TOKEN" ]; then
+    echo "  ⚠️ 已启用鉴权：NapCat 的 access_token 必须填相同的值，否则连不上"
+fi
+echo ""
 if [ "$SYSTEMD_ENABLED" -eq 1 ]; then
     echo "  常用命令："
     echo "      systemctl status yuki      # 查看状态"
@@ -260,6 +304,9 @@ else
     echo "      cd $TARGET_DIR && $VENV_PY main.py"
     echo "  守护进程环境变量："
     echo "      BOT_ADMIN_QQ=$ADMIN_QQ  BOT_HOST=$BOT_HOST  BOT_PORT=$BOT_PORT"
+    if [ -n "$ACCESS_TOKEN" ]; then
+        echo "      BOT_ACCESS_TOKEN=$ACCESS_TOKEN   # NapCat 侧 access_token 必须一致"
+    fi
     echo "  日志文件路径（1panel supervisor 默认）：/opt/1panel/data/supervisor/log/<程序名>-stdout.log"
     echo "  （填入 config.json 的 log.files 后即可在群里用 #log 查日志）"
 fi

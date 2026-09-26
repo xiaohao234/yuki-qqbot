@@ -12,7 +12,7 @@ QQ 群机器人（OneBot v11 协议）：发言统计/排行/趋势/特定短语
 
 | 文件 | 职责 |
 |---|---|
-| `main.py` | 入口：aiohttp WS 服务、全局资源生命周期、启动通知钩子 |
+| `main.py` | 入口：aiohttp WS 服务、全局资源生命周期、启动通知钩子、反向 WS 鉴权 |
 | `onebot.py` | OneBot v11 协议：连接管理、Action 发送、事件解析 |
 | `handler.py` | 全部指令分发与业务逻辑（最大的文件，改指令都在这里） |
 | `renderer.py` | Jinja2 + Playwright 渲染：懒启动、闲置回收、并发闸门 |
@@ -71,6 +71,7 @@ python3 test_repeat.py && python3 test_cq.py && python3 test_avatar.py && python
 - `BOT_HOST` / `BOT_PORT`：监听地址（跨机部署用 `0.0.0.0` 并放行端口）
 - `BOT_DATA_DIR` / `BOT_CONFIG_PATH`：数据目录与配置文件路径覆盖
 - `BOT_BROWSER_IDLE_SEC`：Chromium 闲置回收秒数（默认 900，0 = 不回收）
+- `BOT_ACCESS_TOKEN`：反向 WS 鉴权 token（OneBot v11 标准，Bearer 头或 ?access_token= 均可）；留空 = 不鉴权
 - `config.json`：`features` 功能开关；`log` 块为 `#log` 日志源
   （`mode`: file/journal/auto，supervisor 文件日志用 file，systemd 用 journal）
 

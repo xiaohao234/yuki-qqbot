@@ -1,6 +1,8 @@
 """程序入口：aiohttp WebSocket Server。
 
 - 监听 ws://127.0.0.1:8082，接受 NapCat 的反向 WebSocket 连接。
+- 可选鉴权：设置 BOT_ACCESS_TOKEN 后，NapCat 必须携带相同 access_token
+  （Authorization: Bearer 头或 ?access_token= 参数）才能连入。
 - 启动时初始化 aiohttp ClientSession；Chromium 懒启动（首次渲染才拉起，
   闲置自动回收），降低小内存设备的常驻占用。
 - 每条收到的上报事件交给 handler 处理（并发处理，互不阻塞）。
@@ -9,6 +11,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import os
 import sys
@@ -70,6 +73,8 @@ logger = logging.getLogger("yuki")
 
 HOST = os.environ.get("BOT_HOST", "127.0.0.1")
 PORT = int(os.environ.get("BOT_PORT", "8082"))
+# 反向 WS 鉴权 token（OneBot v11 标准）：留空 = 不鉴权（兼容旧部署）
+ACCESS_TOKEN = os.environ.get("BOT_ACCESS_TOKEN", "").strip()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # 数据目录可经 BOT_DATA_DIR 覆盖（测试时指向临时目录，避免污染真实数据）
 DATA_DIR = os.environ.get("BOT_DATA_DIR") or os.path.join(BASE_DIR, "data")
@@ -124,8 +129,29 @@ def _spawn_task(data: dict) -> None:
     task.add_done_callback(_pending_tasks.discard)
 
 
+def _ws_authorized(request: web.Request) -> bool:
+    """校验反向 WS 连接的鉴权（OneBot v11 标准）。
+
+    接受两种携带方式：Authorization: Bearer <token> 头，或 ?access_token=<token> 查询参数。
+    BOT_ACCESS_TOKEN 未设置时直接放行（兼容旧部署）；比较用常数时间防时序攻击。
+    """
+    if not ACCESS_TOKEN:
+        return True
+    provided = request.headers.get("Authorization", "")
+    if provided.lower().startswith("bearer "):
+        provided = provided[7:].strip()
+    if not provided:
+        provided = request.query.get("access_token", "")
+    return hmac.compare_digest(
+        provided.encode("utf-8"), ACCESS_TOKEN.encode("utf-8")
+    )
+
+
 async def ws_handler(request: web.Request) -> web.WebSocketResponse:
     """NapCat 反向 WebSocket 入口。"""
+    if not _ws_authorized(request):
+        logger.warning("拒绝未鉴权的 WebSocket 连接（access_token 缺失或不匹配）：%s", request.remote)
+        raise web.HTTPUnauthorized(text="invalid access token")
     ws = web.WebSocketResponse(heartbeat=30, max_msg_size=0)
     await ws.prepare(request)
     peer = request.remote
